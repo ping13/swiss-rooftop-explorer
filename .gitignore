@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+.DS_Store
+node_modules
+
+web/public/addresses*
+
+assets/
+Attic
+
+# Virtual environments
+.venv
+.aider*
+.env

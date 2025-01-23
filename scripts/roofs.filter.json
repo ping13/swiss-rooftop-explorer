@@ -1,0 +1,7 @@
+{
+    "*": [
+        "all", 
+        ["attribute-filter", "roof_max", [">=", "$zoom", 14]],
+        ["attribute-filter", "roof_min", [">=", "$zoom", 14]]
+    ]
+}

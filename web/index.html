@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Building Roof Viewer</title>
+    <link rel="icon" href="data:,">
+    <style>
+      body { margin: 0; padding: 0; }
+      h3 { margin-top: 0em; margin-bottom: 0.5em; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        .description { margin-bottom: 5px; font-size: smaller; }
+        .map-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            max-width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <div class="search-container">
+        <div class="input-wrapper">
+            <input type="text" id="zip-search" class="search-input"
+      placeholder="Enter Swiss ZIP code">
+            <button type="button" class="clear-input" aria-label="Clear ZIP code">&times;</button>
+        </div>
+        <div class="buttons-container" id="search-buttons">
+            <button id="search-btn" class="search-button primary">
+                <span id="search-text">Search</span>
+                <span id="search-spinner" style="display: none;">⌛</span>
+            </button>
+            <button id="random-btn" class="search-button success">
+                <span id="random-text">Random</span>
+                <span id="random-spinner" style="display: none;">⌛</span>
+            </button>
+        </div>
+        <div class="input-wrapper" id="street-search-wrapper" style="display: none;">
+            <input type="text" id="street-search" class="search-input" placeholder="Street name + number">
+            <button type="button" class="clear-input" aria-label="Clear street name">&times;</button>
+        </div>
+        <div id="search-message" class="search-message"></div>
+        <div id="street-search-message" class="search-message"></div>
+    </div>
+  <div id="map"></div>
+  <div class="map-overlay" id="features">
+    <h3>Swiss Rooftop Explorer</h3>
+    <div id="feature-properties">
+    </div>
+    <div class="description">
+      <button id="toggle-info"
+      style="background:none;border:none;cursor:pointer;padding:0 4px 0 0;">▼
+      Click to hide info text</button>
+      <div id="info-content" style="display: inline;">
+        <p>This webpage shows <b>Swiss roof buildings</b> with eave and ridge
+        height. The polygons are based on
+        the <a href="https://www.swisstopo.admin.ch/de/landschaftmodell-swissbuildings3d-3-0-beta">swissBUILDINGS3d</a>
+        dataset. Zoom in far enough to click on a polygon to see the eave and
+        ridge height. Zoom closer and you see labels.
+        </p>
+        <p>On the bottom, you can enter a Swiss zip code and you see all
+          <b>building entrances</b> according to
+          the <a href="https://www.bfs.admin.ch/bfs/en/home/registers/federal-register-buildings-dwellings.html">Federal
+          Register of Buildings and Dwellings</a>. You can filter by street to
+          drill down within a zip code.
+        </p>
+        <p><b>Technical fun fact:</b>This webpage is a static site, no server
+        logic involved. Building and address data was preprocessed for optimal
+        web consumption. Works better with a fast internet and a modern web
+        browser.
+          <a href="https://blog.heuel.org">Stephan Heuel</a>.
+          </p>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+  <script type="module" src="/src/addresses.js"></script>
+</body>
+</html>
