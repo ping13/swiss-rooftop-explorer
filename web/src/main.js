@@ -480,6 +480,7 @@ function initializeClearButtons() {
                 document.getElementById('search-message').textContent = '';
                 document.getElementById('street-search').value = '';
                 toggleAddressSearch(false);
+                setZipInUrl(null); // Remove zip from URL
             } else if (input.id === 'street-search') {
                 handleStreetSearch();
             }
