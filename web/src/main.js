@@ -4,7 +4,7 @@ import './style.css';
 import { Protocol } from 'pmtiles';
 import { searchAddresses, AddressDatabase } from './addresses.js';
 
-const DB_INIT_MESSAGE = 'Initializing database for the first time, this may take a few seconds...';
+const DB_INIT_MESSAGE = 'Initializing addresses. This may take a few seconds. Future searches will be much quicker.';
 
 const addressDB = new AddressDatabase();
 let isDBInitialized = false;
@@ -302,7 +302,7 @@ async function searchAndDisplayAddresses(zipCode) {
             messageEl.textContent = ''; // Clear message when addresses are found
         }
         else {
-            messageEl.textContent = `No addresses with valid coordinates found for ZIP code ${zipCode}`;
+            messageEl.textContent = `Unfortunately, none of the found addresses have valid coordinates in the official dataset.`;
         }
     } catch (error) {
         console.error('Error searching addresses:', error);
@@ -466,9 +466,10 @@ initializeClearButtons();
 
 function updateAddressCount(total, filtered = null) {
     const cityName = currentAddresses.length > 0 ? currentAddresses[0].DPLZNAME : '';
+    const zip = document.getElementById('zip-search').value;
     const message = filtered !== null 
-        ? `Found ${filtered} of ${total} addresses in ${cityName}`
-        : `Found ${total} addresses in ${cityName}`;
+        ? `Found ${filtered} of ${total} addresses in ${zip} ${cityName}.`
+          : `Found ${total} addresses in ${zip} ${cityName}.`;
     document.getElementById('street-search-message').textContent = message;
 }
 
