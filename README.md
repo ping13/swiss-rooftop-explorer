@@ -2,7 +2,9 @@
 
 A web application for exploring Swiss rooftops and addresses. 
 
-** [See it live in action](https://ping13.net/swiss-rooftop-explorer/)**
+**[See it live in action](https://ping13.net/swiss-rooftop-explorer/)**
+
+![](screenshot.png)
 
 The technical fun fact: This webpage is a static site, no server logic
 involved. Building and address data was preprocessed for optimal web
