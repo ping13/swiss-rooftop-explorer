@@ -19,7 +19,7 @@
             border-radius: 4px;
             font-family: Arial, sans-serif;
             max-width: 300px;
-        }
+        }g
     </style>
 </head>
 <body>
@@ -43,8 +43,8 @@
             <input type="text" id="street-search" class="search-input" placeholder="Street name + number">
             <button type="button" class="clear-input" aria-label="Clear street name">&times;</button>
         </div>
-        <div id="search-message" class="search-message"></div>
         <div id="street-search-message" class="search-message"></div>
+        <div id="search-message" class="search-message"></div>
     </div>
   <div id="map"></div>
   <div class="map-overlay" id="features">
@@ -58,7 +58,7 @@
       <div id="info-content" style="display: inline;">
         <p>This webpage shows <b>Swiss roof buildings</b> with eave and ridge
         height. The polygons are based on
-        the <a href="https://www.swisstopo.admin.ch/de/landschaftmodell-swissbuildings3d-3-0-beta">swissBUILDINGS3d</a>
+        the <a href="https://www.swisstopo.admin.ch/de/landschaftmodell-swissbuildings3d-3-0-beta">swissBUILDINGS3D</a>
         dataset. Zoom in far enough to click on a polygon to see the eave and
         ridge height. Zoom closer and you see labels.
         </p>
@@ -71,8 +71,9 @@
         <p><b>Technical fun fact:</b>This webpage is a static site, no server
         logic involved. Building and address data was preprocessed for optimal
         web consumption. Works better with a fast internet and a modern web
-        browser.
-          <a href="https://blog.heuel.org">Stephan Heuel</a>.
+        browser, <a href="https://github.com/ping13/swiss-rooftop-explorer">GitHub
+        Repo</a>.<br>
+          Contact: <a href="https://blog.heuel.org">Stephan Heuel</a>.
           </p>
       </div>
     </div>

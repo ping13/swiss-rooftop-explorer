@@ -1,6 +1,6 @@
 # Swiss Rooftop Explorer
 
-An web application for exploring Swiss rooftops and addresses. 
+A web application for exploring Swiss rooftops and addresses. 
 
 ** [See it live in action](https://ping13.net/swiss-rooftop-explorer/)**
 
@@ -10,11 +10,12 @@ consumption. Works better with a fast internet and a modern web browser.
 
 ## Features
 
-- Fast webmap for 3.6 million roofs in Switzerland, using PMTiles for roofs
+- Fast webmap for 3.2 million roofs in Switzerland, using PMTiles for roofs
 - end-to-end data processing pipeline from a FileGeodatabase to PMTiles via geoparquet 
 - Swiss addresses stored in a compact parquet file
 - Client-side querying of addressed using DuckDB-WASM
 - No server needed other than a file or object server
+- Bookmarking possible, like [Bern](https://ping13.net/swiss-rooftop-explorer/?zip=3011)
 
 ## Prerequisites
 
@@ -103,21 +104,6 @@ Test production build:
 make test_web
 ```
 
-## Dependencies
-
-### Python Dependencies
-- dask-geopandas >= 0.4.3
-- GDAL
-- geopandas[all] >= 1.0.1
-- psutil >= 6.1.1
-- pyarrow >= 19.0.0
-- shapely >= 2.0.6
-- tqdm >= 4.67.1
-
-### JavaScript Dependencies
-- @duckdb/duckdb-wasm: ^1.28.1
-- maplibre-gl: ^3.6.2
-- pmtiles: ^2.11.0
 
 ## Project Structure
 
@@ -145,16 +131,15 @@ make test_web
 - Data Storage:
   - Parquet format for efficient data storage
   - PMTiles for map visualization
-- Build System: Make
 - Data Processing:
   - Python with GeoPandas, PyArrow
   - DuckDB for SQL operations
   - GDAL/OGR for geographic data processing
+- Build System: Make
 
-## License
+## Known issues
 
-[Add your license information here]
+- Sometimes, the geometry of roofs may look weird when zoomed in.
+- The webmap may be hard to run on small machines
 
-## Contributing
 
-[Add contribution guidelines if applicable]

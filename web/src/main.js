@@ -6,6 +6,21 @@ import { searchAddresses, AddressDatabase } from './addresses.js';
 
 const DB_INIT_MESSAGE = 'Initializing addresses. This may take a few seconds. Future searches will be much quicker.';
 
+function getZipFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('zip');
+}
+
+function setZipInUrl(zip) {
+    const url = new URL(window.location);
+    if (zip) {
+        url.searchParams.set('zip', zip);
+    } else {
+        url.searchParams.delete('zip');
+    }
+    window.history.pushState({}, '', url);
+}
+
 const addressDB = new AddressDatabase();
 let isDBInitialized = false;
 let currentAddresses = [];
@@ -224,6 +239,7 @@ async function handleRandomSearch() {
         
         const randomZip = await addressDB.getRandomZipCode();
         document.getElementById('zip-search').value = randomZip;
+        setZipInUrl(randomZip);
         await searchAndDisplayAddresses(randomZip);
     } catch (error) {
         console.error('Error with random search:', error);
@@ -316,12 +332,21 @@ function handleSearch() {
     const zipCode = document.getElementById('zip-search').value.trim();
     
     if (zipCode && /^\d{4}$/.test(zipCode)) {  // Check for 4-digit ZIP code
+        setZipInUrl(zipCode);
         searchAndDisplayAddresses(zipCode);
     } else {
         // Clear markers for empty or invalid ZIP code
         addressMarkers.forEach(marker => marker.remove());
         addressMarkers = [];
+        setZipInUrl(null); // Remove zip from URL
     }
+}
+
+// Check for ZIP code in URL on page load
+const urlZip = getZipFromUrl();
+if (urlZip && /^\d{4}$/.test(urlZip)) {
+    document.getElementById('zip-search').value = urlZip;
+    searchAndDisplayAddresses(urlZip);
 }
 
 // Add event listeners for the search and random buttons
