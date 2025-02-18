@@ -235,8 +235,10 @@ async function searchAndDisplayAddresses(zipCode) {
         // Initialize the database if not already initialized, this may take
         // some time as duckdb needs to be loaded into the client
         if (!isDBInitialized) {
+            document.getElementById('search-message').textContent = 'Initializing database for the first time, this may take a few seconds...';
             await addressDB.initialize();
             isDBInitialized = true;
+            document.getElementById('search-message').textContent = '';
         }
         
         // Clear previous markers
