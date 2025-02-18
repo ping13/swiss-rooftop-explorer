@@ -270,7 +270,6 @@ async function searchAndDisplayAddresses(zipCode) {
 
         // Add index to each address
         currentAddresses = addresses.map((addr, index) => ({...addr, index}));
-        updateAddressCount(currentAddresses.length);
         
         // Show or hide address search based on results
         toggleAddressSearch(currentAddresses.length > 0);
@@ -309,6 +308,8 @@ async function searchAndDisplayAddresses(zipCode) {
             }
         });
         
+        updateAddressCount(addressMarkers.length);
+
         // Zoom to the extent of all markers
         if (addressMarkers.length > 0) {
             map.fitBounds(bounds, {
@@ -493,8 +494,8 @@ function updateAddressCount(total, filtered = null) {
     const cityName = currentAddresses.length > 0 ? currentAddresses[0].DPLZNAME : '';
     const zip = document.getElementById('zip-search').value;
     const message = filtered !== null 
-        ? `Found ${filtered} of ${total} addresses in ${zip} ${cityName}.`
-          : `Found ${total} addresses in ${zip} ${cityName}.`;
+        ? `Found ${filtered} of ${total} addresses with coordinates in ${zip} ${cityName}.`
+          : `Found ${total} addresses with coodinates in ${zip} ${cityName}.`;
     document.getElementById('street-search-message').textContent = message;
 }
 
