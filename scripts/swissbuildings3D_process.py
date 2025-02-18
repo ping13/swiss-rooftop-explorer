@@ -262,6 +262,11 @@ if __name__ == "__main__":
     gdf = gpd.read_file(pq_folder, bbox=bbox)
     print(f"found {len(gdf)} rows")
 
+    # Add incrementing ID and remove UUID if it exists
+    gdf['id'] = range(1, len(gdf) + 1)  # Add incrementing ID starting from 1
+    if 'UUID' in gdf.columns:
+        gdf = gdf.drop(columns=['UUID'])
+
     # create an obj column
     print(f"Create 3d models")
     gdf['obj'] = gdf.geometry.apply(
