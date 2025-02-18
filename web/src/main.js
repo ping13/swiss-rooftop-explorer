@@ -214,8 +214,10 @@ async function handleRandomSearch() {
         
         // Initialize the database if not already initialized
         if (!isDBInitialized) {
+            document.getElementById('search-message').textContent = 'Initializing database for the first time, this may take a few seconds...';
             await addressDB.initialize();
             isDBInitialized = true;
+            document.getElementById('search-message').textContent = '';
         }
         
         const randomZip = await addressDB.getRandomZipCode();
