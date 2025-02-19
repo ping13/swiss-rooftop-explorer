@@ -15,7 +15,7 @@ consumption. Works better with a fast internet and a modern web browser.
 - Fast webmap for 3.2 million roofs in Switzerland, using PMTiles for roofs
 - end-to-end data processing pipeline from a FileGeodatabase to PMTiles via geoparquet 
 - Swiss addresses stored in a compact parquet file
-- Client-side querying of addressed using DuckDB-WASM
+- Client-side querying of addresses using DuckDB-WASM
 - No server needed other than a file or object server
 - Bookmarking possible, like [Bern](https://ping13.net/swiss-rooftop-explorer/?zip=3011)
 
@@ -111,8 +111,9 @@ make test_web
 
 ```
 ├── scripts/                   # Data processing scripts
-│   ├── create_parquet_addresses.py
+│   ├── addresses_sqlite2pq.py
 │   ├── swissbuildings3D_gdb2pq.py
+│   ├── swissbuildings3D_process.py
 │   └── pq2pmtiles.sh
 ├── web/                       # Web application
 │   ├── src/

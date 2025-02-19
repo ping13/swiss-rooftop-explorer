@@ -60,13 +60,13 @@ assets/swissBUILDINGS3D_3-0_1112-13.gdb/gdb: assets/swissBUILDINGS3D_3-0_1112-13
 
 create_addresses:	web/public/addresses_full.parquet web/public/addresses.parquet	## create the address parquet files
 
-web/public/addresses_full.parquet: scripts/create_parquet_addresses.py assets/data.sqlite
+web/public/addresses_full.parquet: scripts/addresses_sqlite2py.py assets/data.sqlite
 	mkdir -p web/public
-	time python scripts/create_parquet_addresses.py --full --sqlite-file assets/data.sqlite $@ 
+	time python scripts/addresses_sqlite2py.py --full --sqlite-file assets/data.sqlite $@ 
 
-web/public/addresses.parquet: scripts/create_parquet_addresses.py assets/data.sqlite
+web/public/addresses.parquet: scripts/addresses_sqlite2py.py assets/data.sqlite
 	mkdir -p web/public
-	time python scripts/create_parquet_addresses.py --sqlite-file assets/data.sqlite $@ 
+	time python scripts/addresses_sqlite2py.py --sqlite-file assets/data.sqlite $@ 
 
 ### ETL Buildings
 
