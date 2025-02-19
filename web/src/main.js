@@ -204,6 +204,7 @@ map.on('click', (e) => {
                 { highlighted: false }
             );
             highlightedId = null;
+            document.getElementById('feature-properties').innerHTML = '';
         }
     }
 });
