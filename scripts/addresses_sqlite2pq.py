@@ -1,15 +1,15 @@
-"""
-Convert Swiss address data from SQLite to Parquet format.
+"""Convert Swiss address data from SQLite to Parquet format.
 
-This script processes Swiss address data stored in an SQLite database, transforms coordinates
-from LV95 to WGS84, and writes the data to a Parquet file. The data is grouped by postal code
-(zipcode) for efficient storage and querying.
+This script processes Swiss address data stored in an SQLite database, writes
+the data to a Parquet file. The data is grouped by postal code (zipcode) for
+efficient storage and querying.
 
 The script handles:
 - Coordinate transformation using pyproj
 - Data type validation and conversion
 - Grouping data by postal code
 - Writing to Parquet with optimized row group sizes
+
 """
 
 from typing import Optional, Union, Dict, List
@@ -27,7 +27,7 @@ from pyproj import Transformer
 @click.option('--sqlite-file', default='data/data.sqlite', help='Path to the input zipped CSV file.')
 @click.option("--full", is_flag=True, default=False, help="write out the full set of columns")
 @click.argument('output_parquet_file')
-def csv_to_pq_from_zip(sqlite_file: str, full: bool, output_parquet_file: str) -> None:
+def tables_to_pq_from_sqlite(sqlite_file: str, full: bool, output_parquet_file: str) -> None:
     """
     Convert SQLite address data to Parquet format.
 
@@ -167,7 +167,7 @@ def csv_to_pq_from_zip(sqlite_file: str, full: bool, output_parquet_file: str) -
 
 if __name__ == '__main__':
     try:
-        csv_to_pq_from_zip()
+        tables_to_pq_from_sqlite()
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         exit(1)

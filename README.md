@@ -6,18 +6,21 @@ A web application for exploring Swiss rooftops and addresses.
 
 ![](screenshot.png)
 
-The technical fun fact: This webpage is a static site, no server logic
-involved. Building and address data was preprocessed for optimal web
-consumption. Works better with a fast internet and a modern web browser.
+Read all about it in this [blog-post](https://blog.heuel.org/2025/02/swiss-roof-explorer/).
 
 ## Features
 
-- Fast webmap for 3.2 million roofs in Switzerland, using PMTiles for roofs
-- end-to-end data processing pipeline from a FileGeodatabase to PMTiles via geoparquet 
-- Swiss addresses stored in a compact parquet file
-- Client-side querying of addresses using DuckDB-WASM
-- No server needed other than a file or object server
-- Bookmarking possible, like [Bern](https://ping13.net/swiss-rooftop-explorer/?zip=3011)
+- Fast web map for approximately 3.2 million roof polygons in Switzerland,
+  using [PMTiles][]
+- End-to-end data processing pipeline from a FileGeodatabase to PMTiles via
+  [Geoparquet][]
+- Swiss addresses stored in a compact parquet file for quick retrieval
+- Client-side querying of addresses using [DuckDB-WASM][]
+- No server component needed other than a web or object server, making it easy
+  to run locally
+- Bookmarking is possible, for example in Bern:
+  <https://ping13.net/swiss-rooftop-explorer/?zip=3011> (though it may take a
+  couple of seconds until the app zooms to the area of interest)
 
 ## Prerequisites
 
