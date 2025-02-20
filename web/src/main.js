@@ -513,9 +513,9 @@ document.getElementById('toggle-info').addEventListener('click', function() {
     const currentDisplay = window.getComputedStyle(infoContent).display;
     if (currentDisplay === 'none') {
         infoContent.style.display = 'inline';
-        this.textContent = '▼ Click to hide info text';
+        this.textContent = '▼ CLICK TO HIDE INFO TEXT';
     } else {
         infoContent.style.display = 'none';
-        this.textContent = '► Click to show info text';
+        this.textContent = '► CLICK TO SHOW INFO TEXT';
     }
 });
