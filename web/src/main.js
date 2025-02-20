@@ -227,6 +227,10 @@ function showSpinner(show, type = 'search') {
 async function handleRandomSearch() {
     console.log("handle random search");
     try {
+        // Add this line to clear street search
+        document.getElementById('street-search').value = '';
+        document.getElementById('street-search-message').textContent = '';
+        
         document.getElementById('search-buttons').classList.add('visible');
         showSpinner(true, 'random');
         
