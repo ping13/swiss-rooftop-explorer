@@ -371,13 +371,15 @@ document.getElementById('zip-search').addEventListener('focus', () => {
 // Update ZIP search input handler
 document.getElementById('zip-search').addEventListener('input', (e) => {
     const zipCode = e.target.value.trim();
+    // Clear street search on any ZIP code change
+    document.getElementById('street-search').value = '';
+    document.getElementById('street-search-message').textContent = '';
+    
     if (!zipCode || !/^\d{4}$/.test(zipCode)) {
         // Clear markers if ZIP code is empty or invalid
         addressMarkers.forEach(marker => marker.remove());
         addressMarkers = [];
         document.getElementById('search-message').textContent = '';
-        document.getElementById('street-search').value = ''; // Clear street search input
-        document.getElementById('street-search-message').textContent = '';
         toggleAddressSearch(false);  // Hide street search
     }
 });
