@@ -48,25 +48,25 @@ assets/swissBUILDINGS3D_3_0.gdb.zip:
 	curl -J --output $@ "https://data.geo.admin.ch/ch.swisstopo.swissbuildings3d_3_0/swissbuildings3d_3_0_2024/swissbuildings3d_3_0_2024_2056_5728.gdb.zip"
 
 assets/swissBUILDINGS3D_3_0.gdb/gdb: assets/swissBUILDINGS3D_3_0.gdb.zip
-	(cd assets; unzip swissBUILDINGS3D_3_0.gdb.zip )
+	(cd assets; unzip swissBUILDINGS3D_3_0.gdb.zip && cd .. && touch $@ )
 
 assets/swissBUILDINGS3D_3-0_1112-13.gdb.zip:
 	curl -J --output $@ "https://data.geo.admin.ch/ch.swisstopo.swissbuildings3d_3_0/swissbuildings3d_3_0_2019_1112-13/swissbuildings3d_3_0_2019_1112-13_2056_5728.gdb.zip"
 
 assets/swissBUILDINGS3D_3-0_1112-13.gdb/gdb: assets/swissBUILDINGS3D_3-0_1112-13.gdb.zip
-	(cd assets; unzip swissBUILDINGS3D_3-0_1112-13.gdb.zip )
+	(cd assets; unzip -o swissBUILDINGS3D_3-0_1112-13.gdb.zip && cd .. && touch $@ )
 
 ### ETL Addresses
 
 create_addresses:	web/public/addresses_full.parquet web/public/addresses.parquet	## create the address parquet files
 
-web/public/addresses_full.parquet: scripts/addresses_sqlite2py.py assets/data.sqlite
+web/public/addresses_full.parquet: scripts/addresses_sqlite2pq.py assets/data.sqlite
 	mkdir -p web/public
-	time python scripts/addresses_sqlite2py.py --full --sqlite-file assets/data.sqlite $@ 
+	time python scripts/addresses_sqlite2pq.py --full --sqlite-file assets/data.sqlite $@ 
 
-web/public/addresses.parquet: scripts/addresses_sqlite2py.py assets/data.sqlite
+web/public/addresses.parquet: scripts/addresses_sqlite2pq.py assets/data.sqlite
 	mkdir -p web/public
-	time python scripts/addresses_sqlite2py.py --sqlite-file assets/data.sqlite $@ 
+	time python scripts/addresses_sqlite2pq.py --sqlite-file assets/data.sqlite $@ 
 
 ### ETL Buildings
 
