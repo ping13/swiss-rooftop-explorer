@@ -75,23 +75,30 @@ init: 				## initialize Python environment (conda)
 
 create_buildings: $(PARQUET_FILES) $(PARQUET_FILES_2D)	## create building parquet files
 
-pmtiles: web/public/roofs.pmtiles web/public/roofs-small.pmtiles	## calculate building pmtiles for the web
+pmtiles: web/public/roofs.pmtiles web/public/buildings.pmtiles web/public/roofs-small.pmtiles	## calculate building pmtiles for the web
 
 %_Roof_solid/chunk_00.parquet: %.gdb/gdb scripts/swissbuildings3D_gdb2pq.py
 	time python scripts/swissbuildings3D_gdb2pq.py $(patsubst %.gdb/gdb,%.gdb,$<) Roof_solid --chunk 100000
 
 %_Roof_solid_2d/chunk_00.parquet: %_Roof_solid/chunk_00.parquet scripts/swissbuildings3D_process.py
+	@echo "Creating $@"
 	time python scripts/swissbuildings3D_process.py $(patsubst %/chunk_00.parquet,%,$<)
 
 %_Building_solid/chunk_00.parquet: %.gdb/gdb scripts/swissbuildings3D_gdb2pq.py
 	time python scripts/swissbuildings3D_gdb2pq.py $(patsubst %.gdb/gdb,%.gdb,$<) Building_solid --chunk 100000
 
 %_Building_solid_2d/chunk_00.parquet: %_Building_solid/chunk_00.parquet scripts/swissbuildings3D_process.py
+	@echo "Creating $@"
 	python scripts/swissbuildings3D_process.py $(patsubst %/chunk_00.parquet,%,$<)
 
 web/public/roofs.pmtiles: assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet scripts/pq2pmtiles.sh
 	mkdir -p web/public/
 	time bash scripts/pq2pmtiles.sh $< $@
+
+web/public/buildings.pmtiles: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet scripts/pq2pmtiles.sh
+	mkdir -p web/public/
+	time bash scripts/pq2pmtiles.sh $< $@
+
 
 web/public/roofs-small.pmtiles: assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet scripts/pq2pmtiles.sh
 	mkdir -p web/public/
