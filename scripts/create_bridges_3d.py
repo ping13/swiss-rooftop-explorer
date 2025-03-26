@@ -42,6 +42,7 @@ def get_min_height_swissalti_service(linestring: LineString) -> float:
     url = "https://api3.geo.admin.ch/rest/services/profile.json"
     params = {"geom": geom_str}
 
+    # if the status is 400, assume a min height which is 100m below the smallesz z-coordinate of coords. AI!
     with httpx.Client() as client:
         r = client.get(url, params=params)
         r.raise_for_status()
