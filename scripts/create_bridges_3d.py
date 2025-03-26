@@ -21,6 +21,7 @@ from shapely.geometry import (
 import httpx
 import json
 from shapely.geometry import LineString
+from hishel import CacheClient, FileStorage
 
 from bridge_creation import create_bridge
 
@@ -41,8 +42,11 @@ def get_min_height_swissalti_service(linestring: LineString) -> float:
     params = {"geom": geom_str}
 
     try:
-        # use caching with hishel to save the response for at least 30 days on disk. AI!
-        with httpx.Client() as client:
+        # Create a cache storage with 30-day TTL
+        storage = FileStorage(ttl=60 * 60 * 24 * 30)  # 30 days in seconds
+        
+        # Create a client with the cache
+        with CacheClient(storage=storage) as client:
             r = client.get(url, params=params)
             r.raise_for_status()
             data = r.json()  # List of points
