@@ -7,9 +7,6 @@ import shapely
 import numpy as np
 import zlib
 import re
-
-from bridge_creation import create_bridge
-
 import pyvista as pv
 import numpy as np
 import zlib
@@ -22,10 +19,11 @@ from shapely.geometry import (
     Polygon, MultiPolygon, GeometryCollection
 )
 import httpx
-
-import httpx
 import json
 from shapely.geometry import LineString
+
+from bridge_creation import create_bridge
+
 
 def get_min_height_swissalti_service(linestring: LineString) -> float:
     coords = [[round(x), round(y)] for x, y, *_ in linestring.coords]
@@ -43,6 +41,7 @@ def get_min_height_swissalti_service(linestring: LineString) -> float:
     params = {"geom": geom_str}
 
     try:
+        # use caching with hishel to save the response for at least 30 days on disk. AI!
         with httpx.Client() as client:
             r = client.get(url, params=params)
             r.raise_for_status()
@@ -50,10 +49,10 @@ def get_min_height_swissalti_service(linestring: LineString) -> float:
 
         heights = [pt["alts"]["COMB"] for pt in data if "alts" in pt and "COMB" in pt["alts"]]
         if not heights:
-            raise ValueError("No valid elevation data returned.")
+            raise httpx.HTTPStatusError("No valid elevation data returned.")
         return min(heights)
     except httpx.HTTPStatusError as e:
-        if e.response.status_code == 400:
+        if e.response.status_code >= 400:
             # If status is 400, calculate a fallback height
             # Find the smallest z-coordinate and subtract 100m
             z_coords = [coord[2] for coord in linestring.coords if len(coord) > 2]
