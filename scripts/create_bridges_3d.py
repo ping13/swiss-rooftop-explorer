@@ -29,7 +29,13 @@ from shapely.geometry import LineString
 
 def get_min_height_swissalti_service(linestring: LineString) -> float:
     coords = [[round(x), round(y)] for x, y, *_ in linestring.coords]
-    # if there are more than 4094 coords, thing the list out to take only every n-th coordinate. AI!
+    
+    # If there are more than 4094 coordinates, thin the list to take only every n-th coordinate
+    if len(coords) > 4094:
+        # Calculate how many points to skip to get under 4094 points
+        n = len(coords) // 4094 + 1
+        coords = coords[::n]
+    
     geom = {"type": "LineString", "coordinates": coords}
     geom_str = json.dumps(geom)
 
