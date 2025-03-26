@@ -42,16 +42,29 @@ def get_min_height_swissalti_service(linestring: LineString) -> float:
     url = "https://api3.geo.admin.ch/rest/services/profile.json"
     params = {"geom": geom_str}
 
-    # if the status is 400, assume a min height which is 100m below the smallesz z-coordinate of coords. AI!
-    with httpx.Client() as client:
-        r = client.get(url, params=params)
-        r.raise_for_status()
-        data = r.json()  # List of points
+    try:
+        with httpx.Client() as client:
+            r = client.get(url, params=params)
+            r.raise_for_status()
+            data = r.json()  # List of points
 
-    heights = [pt["alts"]["COMB"] for pt in data if "alts" in pt and "COMB" in pt["alts"]]
-    if not heights:
-        raise ValueError("No valid elevation data returned.")
-    return min(heights)
+        heights = [pt["alts"]["COMB"] for pt in data if "alts" in pt and "COMB" in pt["alts"]]
+        if not heights:
+            raise ValueError("No valid elevation data returned.")
+        return min(heights)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 400:
+            # If status is 400, calculate a fallback height
+            # Find the smallest z-coordinate and subtract 100m
+            z_coords = [coord[2] for coord in linestring.coords if len(coord) > 2]
+            if z_coords:
+                return min(z_coords) - 100
+            else:
+                # If no z-coordinates are available, use a default value
+                return 0  # or some other sensible default
+        else:
+            # Re-raise other HTTP errors
+            raise
 
 def get_min_z(geom):
     def extract_z_coords(g):
