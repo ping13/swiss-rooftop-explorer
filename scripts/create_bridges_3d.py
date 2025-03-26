@@ -11,6 +11,8 @@ import pyvista as pv
 import numpy as np
 import zlib
 import io
+from concurrent.futures import ProcessPoolExecutor
+import multiprocessing
 
 import pyvista as pv
 import numpy as np
@@ -146,7 +148,94 @@ def mesh_to_compressed_obj(mesh):
     
     return compressed_obj
 
-def read_ogr_dataset(input_path):
+def _process_feature(feature_data):
+    """Process a single feature in a separate process"""
+    feature, field_names = feature_data
+    
+    attributes = {}
+    for field in field_names:
+        attributes[field] = feature.GetField(field)
+    
+    geometry = feature.GetGeometryRef()
+    if geometry is None:
+        return None
+        
+    # Check if it's a line geometry
+    geom_type = geometry.GetGeometryType()
+    if geom_type not in [ogr.wkbLineString, ogr.wkbLineString25D, 
+                         ogr.wkbMultiLineString, ogr.wkbMultiLineString25D]:
+        print(f"Skipping non-line geometry with type: {geometry.GetGeometryName()}")
+        return None
+        
+    wkt = geometry.ExportToWkt()
+    shapely_geom = shapely.wkt.loads(wkt)
+
+    # calc length
+    length_3d = shapely_geom.length
+
+    ## create bridge, first define parameters
+    artificial_height = 60  # TODO: see below
+    default_railway_width = 8
+    default_road_width = 3
+    autobahn_width = 20
+    if "anzahl_spuren" in field_names: # Railway Bridges
+        deck_width= default_railway_width * int(feature.GetField("anzahl_spuren"))
+    elif "objektart" in field_names: # Road Bridges
+        objektart = feature.GetField("objektart")
+        match = re.search(r"(\d+)m\s.*", objektart)
+        if match:
+            deck_width = int(match.group(1)) 
+            deck_width *= (
+                1.3  # some factor to take real-world additional width into account
+            )
+        else:
+            if objektart == "Autobahn":
+                deck_width = autobahn_width
+            else:
+                deck_width = default_road_width
+    else:
+        raise Exception(f"Cannot determine the width of the bridge deck for {attributes}")
+
+        
+    bottom_shift_percentage = 0
+    # get the min elevation based on the SwissTopo DEM service, and put in 10 m into the ground to be sure
+    min_elevation = get_min_height_swissalti_service(shapely_geom) - 10
+    #min_elevation = get_min_z(shapely_geom) - artificial_height # TODO: get the real minimum z
+    if length_3d < 20:
+        arch_fractions = None
+        pier_size_meters = max(1, length_3d * 0.15)
+    else:
+        n = int(length_3d / 20)
+        arch_fractions = [ 1/n ] * n
+        pier_size_meters = 3
+
+    circular_arch = False
+    arch_height_fraction = 0.8
+    
+    bridge_mesh, footprint = create_bridge(
+        shapely_geom,
+        deck_width=deck_width,
+        bottom_shift_percentage=bottom_shift_percentage,
+        min_elevation=min_elevation,
+        arch_fractions=arch_fractions,
+        pier_size_meters=pier_size_meters,
+        circular_arch=circular_arch,
+        arch_height_fraction=arch_height_fraction,
+    )
+    bridge_obj = mesh_to_compressed_obj(bridge_mesh)
+    attributes["obj"] = bridge_obj
+
+    # save the footprint polygon 
+    attributes["geometry"] = footprint
+
+    max_z = max([coord[-1] for coord in shapely_geom.coords])
+    min_z = min([coord[-1] for coord in shapely_geom.coords])
+    attributes["dach_max"] = max_z
+    attributes["dach_min"] = min_z
+    
+    return attributes
+
+def read_ogr_dataset(input_path, parallel=False, max_workers=None):
     """
     Read a line dataset using osgeo.ogr and return a GeoDataFrame
     
@@ -154,6 +243,10 @@ def read_ogr_dataset(input_path):
     -----------
     input_path : str
         Path to the input dataset (shapefile, GeoJSON, etc.)
+    parallel : bool, optional
+        Whether to process features in parallel using ProcessPoolExecutor
+    max_workers : int, optional
+        Maximum number of worker processes to use. If None, defaults to number of CPU cores.
         
     Returns:
     --------
@@ -178,86 +271,109 @@ def read_ogr_dataset(input_path):
         field_names.append(field_defn.GetName())
     
     # Extract features
-    features = []
-    for i, feature in enumerate(layer):
-        attributes = {}
-        for field in field_names:
-            attributes[field] = feature.GetField(field)
-        geometry = feature.GetGeometryRef()
-        if geometry is not None:
-            # Check if it's a line geometry
-            geom_type = geometry.GetGeometryType()
-            if geom_type in [ogr.wkbLineString, ogr.wkbLineString25D, 
-                             ogr.wkbMultiLineString, ogr.wkbMultiLineString25D]:
-                wkt = geometry.ExportToWkt()
-                shapely_geom = shapely.wkt.loads(wkt)
+    if not parallel:
+        # Original sequential processing
+        features = []
+        for i, feature in enumerate(layer):
+            attributes = {}
+            for field in field_names:
+                attributes[field] = feature.GetField(field)
+            geometry = feature.GetGeometryRef()
+            if geometry is not None:
+                # Check if it's a line geometry
+                geom_type = geometry.GetGeometryType()
+                if geom_type in [ogr.wkbLineString, ogr.wkbLineString25D, 
+                                 ogr.wkbMultiLineString, ogr.wkbMultiLineString25D]:
+                    wkt = geometry.ExportToWkt()
+                    shapely_geom = shapely.wkt.loads(wkt)
 
-                # calc length
-                length_3d = shapely_geom.length
+                    # calc length
+                    length_3d = shapely_geom.length
 
-                ## create bridge, first define parameters
-                artificial_height = 60  # TODO: see below
-                default_railway_width = 8
-                default_road_width = 3
-                autobahn_width = 20
-                if "anzahl_spuren" in field_names: # Railway Bridges
-                    deck_width= default_railway_width * int(feature.GetField("anzahl_spuren"))
-                elif "objektart" in field_names: # Road Bridges
-                    objektart = feature.GetField("objektart")
-                    match = re.search(r"(\d+)m\s.*", objektart)
-                    if match:
-                        deck_width = int(match.group(1)) 
-                        deck_width *= (
-                            1.3  # some factor to take real-world additional width into account
-                        )
-                    else:
-                        if objektart == "Autobahn":
-                            deck_width = autobahn_width
+                    ## create bridge, first define parameters
+                    artificial_height = 60  # TODO: see below
+                    default_railway_width = 8
+                    default_road_width = 3
+                    autobahn_width = 20
+                    if "anzahl_spuren" in field_names: # Railway Bridges
+                        deck_width= default_railway_width * int(feature.GetField("anzahl_spuren"))
+                    elif "objektart" in field_names: # Road Bridges
+                        objektart = feature.GetField("objektart")
+                        match = re.search(r"(\d+)m\s.*", objektart)
+                        if match:
+                            deck_width = int(match.group(1)) 
+                            deck_width *= (
+                                1.3  # some factor to take real-world additional width into account
+                            )
                         else:
-                            deck_width = default_road_width
-                else:
-                    raise Exception("Cannot determine the width of the bridge deck for {attributes}")
+                            if objektart == "Autobahn":
+                                deck_width = autobahn_width
+                            else:
+                                deck_width = default_road_width
+                    else:
+                        raise Exception("Cannot determine the width of the bridge deck for {attributes}")
 
+                        
+                    bottom_shift_percentage = 0
+                    # get the min elevation based on the SwissTopo DEM service, and put in 10 m into the ground to be sure
+                    min_elevation = get_min_height_swissalti_service(shapely_geom) - 10
+                    #min_elevation = get_min_z(shapely_geom) - artificial_height # TODO: get the real minimum z
+                    if length_3d < 20:
+                        arch_fractions = None
+                        pier_size_meters = max(1, length_3d * 0.15)
+                    else:
+                        n = int(length_3d / 20)
+                        arch_fractions = [ 1/n ] * n
+                        pier_size_meters = 3
+
+                    circular_arch = False
+                    arch_height_fraction = 0.8
                     
-                bottom_shift_percentage = 0
-                # get the min elevation based on the SwissTopo DEM service, and put in 10 m into the ground to be sure
-                min_elevation = get_min_height_swissalti_service(shapely_geom) - 10
-                #min_elevation = get_min_z(shapely_geom) - artificial_height # TODO: get the real minimum z
-                if length_3d < 20:
-                    arch_fractions = None
-                    pier_size_meters = max(1, length_3d * 0.15)
+                    bridge_mesh, footprint = create_bridge(
+                        shapely_geom,
+                        deck_width=deck_width,
+                        bottom_shift_percentage=bottom_shift_percentage,
+                        min_elevation=min_elevation,
+                        arch_fractions=arch_fractions,
+                        pier_size_meters=pier_size_meters,
+                        circular_arch=circular_arch,
+                        arch_height_fraction=arch_height_fraction,
+                    )
+                    bridge_obj = mesh_to_compressed_obj(bridge_mesh)
+                    attributes["obj"] = bridge_obj
+
+                    # save the footprint polygon 
+                    attributes["geometry"] = footprint
+
+                    max_z = max([coord[-1] for coord in shapely_geom.coords])
+                    min_z = min([coord[-1] for coord in shapely_geom.coords])
+                    attributes["dach_max"] = max_z
+                    attributes["dach_min"] = min_z
+                    
+                    features.append(attributes)
                 else:
-                    n = int(length_3d / 20)
-                    arch_fractions = [ 1/n ] * n
-                    pier_size_meters = 3
-
-                circular_arch = False
-                arch_height_fraction = 0.8
-                
-                bridge_mesh, footprint = create_bridge(
-                    shapely_geom,
-                    deck_width=deck_width,
-                    bottom_shift_percentage=bottom_shift_percentage,
-                    min_elevation=min_elevation,
-                    arch_fractions=arch_fractions,
-                    pier_size_meters=pier_size_meters,
-                    circular_arch=circular_arch,
-                    arch_height_fraction=arch_height_fraction,
-                )
-                bridge_obj = mesh_to_compressed_obj(bridge_mesh)
-                attributes["obj"] = bridge_obj
-
-                # save the footprint polygon 
-                attributes["geometry"] = footprint
-
-                max_z = max([coord[-1] for coord in shapely_geom.coords])
-                min_z = min([coord[-1] for coord in shapely_geom.coords])
-                attributes["dach_max"] = max_z
-                attributes["dach_min"] = min_z
-                
-                features.append(attributes)
-            else:
-                print(f"Skipping non-line geometry with type: {geometry.GetGeometryName()}")
+                    print(f"Skipping non-line geometry with type: {geometry.GetGeometryName()}")
+    else:
+        # Parallel processing using ProcessPoolExecutor
+        if max_workers is None:
+            max_workers = multiprocessing.cpu_count()
+            
+        print(f"Processing features in parallel with {max_workers} workers...")
+        
+        # Collect all features first to avoid issues with OGR layer iteration
+        feature_data = []
+        for feature in layer:
+            # Clone the feature to ensure it's safe to use in another process
+            feature_clone = feature.Clone()
+            feature_data.append((feature_clone, field_names))
+        
+        # Process features in parallel
+        features = []
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            results = list(executor.map(_process_feature, feature_data))
+            
+        # Filter out None results and add valid ones to features list
+        features = [result for result in results if result is not None]
     
     # Convert to GeoDataFrame
     gdf = gpd.GeoDataFrame(features)
@@ -269,7 +385,7 @@ def read_ogr_dataset(input_path):
     return gdf
 
 
-def convert_to_geoparquet(input_path, output_path):
+def convert_to_geoparquet(input_path, output_path, parallel=False, max_workers=None):
     """
     Convert an OGR-readable line dataset to GeoParquet
     
@@ -279,11 +395,15 @@ def convert_to_geoparquet(input_path, output_path):
         Path to the input dataset
     output_path : str
         Path for the output GeoParquet file
+    parallel : bool, optional
+        Whether to process features in parallel
+    max_workers : int, optional
+        Maximum number of worker processes to use
     """
     try:
         # Read the data using OGR
         print(f"Reading data from {input_path}...")
-        gdf = read_ogr_dataset(input_path)
+        gdf = read_ogr_dataset(input_path, parallel=parallel, max_workers=max_workers)
         
         if gdf.empty:
             print("No line geometries found in the dataset.")
@@ -303,15 +423,19 @@ def convert_to_geoparquet(input_path, output_path):
         raise
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python ogr_to_geoparquet.py <input_path> <output_path>")
-        sys.exit(1)
+    import argparse
     
-    input_path = sys.argv[1]
-    output_path = sys.argv[2]
+    parser = argparse.ArgumentParser(description="Convert line geometries to 3D bridge models in GeoParquet format")
+    parser.add_argument("input_path", help="Path to the input dataset")
+    parser.add_argument("output_path", help="Path for the output GeoParquet file")
+    parser.add_argument("--parallel", action="store_true", help="Process features in parallel")
+    parser.add_argument("--workers", type=int, default=None, help="Number of worker processes (defaults to CPU count)")
+    
+    args = parser.parse_args()
     
     # Add .parquet extension if not present
+    output_path = args.output_path
     if not output_path.endswith('.parquet'):
         output_path += '.parquet'
     
-    convert_to_geoparquet(input_path, output_path)
+    convert_to_geoparquet(args.input_path, output_path, parallel=args.parallel, max_workers=args.workers)
