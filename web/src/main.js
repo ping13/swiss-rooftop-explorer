@@ -84,7 +84,14 @@ const map = new maplibregl.Map({
                         "case",
                         ["to-boolean", ["feature-state", "highlighted"]],
                         "#ffff00",
-                        "#8b0000"
+                        [
+                            "match",
+                            ["get", "type"],
+                            1, "#8b0000",  // red (as it was before)
+                            2, "#B8860B",  // dark yellow
+                            3, "#4D4D4D",  // dark grey
+                            "#8b0000"      // default to red for any other values
+                        ]
                     ],
                     "fill-opacity": 0.5
                 }
