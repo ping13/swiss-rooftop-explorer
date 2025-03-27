@@ -16,6 +16,7 @@ import multiprocessing
 
 import pyvista as pv
 import numpy as np
+import logging
 from shapely.geometry import (
     LineString, MultiLineString, Point, MultiPoint,
     Polygon, MultiPolygon, GeometryCollection
@@ -26,6 +27,24 @@ from shapely.geometry import LineString
 from hishel import CacheClient, FileStorage
 
 from bridge_creation import create_bridge
+
+# Setup logger
+logger = logging.getLogger(__name__)
+
+# Add a formatter that includes timestamp, level, and module
+formatter = logging.Formatter(
+    "%(asctime)s - %(levelname)s - %(module)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+
+# Add INFO level logging to console
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(formatter)
+
+logger.addHandler(console_handler)
+logger.setLevel(logging.DEBUG)
 
 
 def get_min_height_swissalti_service(linestring: LineString) -> float:
@@ -148,14 +167,14 @@ def mesh_to_compressed_obj(mesh):
     
     return compressed_obj
 
-def get_bridge_parameters_from_db(bridge_id, db_path="bridges.sqlite"):
+def get_bridge_parameters_from_db(bridge_uuid, db_path="assets/bridge_parameters.db"):
     """
     Check if there are custom bridge parameters in the SQLite database.
     
     Parameters:
     -----------
-    bridge_id : str or int
-        Identifier for the bridge to look up
+    bridge_uuid : str or int
+        UUID for the bridge feature to look up (UUID is from Swisstopo)
     db_path : str, optional
         Path to the SQLite database file
         
@@ -165,8 +184,9 @@ def get_bridge_parameters_from_db(bridge_id, db_path="bridges.sqlite"):
         Dictionary of bridge parameters if found, None otherwise
     """
     if not os.path.exists(db_path):
+        logger.warning(f"No DB found for {db_path}")
         return None
-        
+
     try:
         import sqlite3
         conn = sqlite3.connect(db_path)
@@ -175,14 +195,15 @@ def get_bridge_parameters_from_db(bridge_id, db_path="bridges.sqlite"):
         # Check if the table exists
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bridge_parameters'")
         if not cursor.fetchone():
+            logger.warning(f"table bridge_parameters doesn't seem to exist for {db_path}")
             conn.close()
             return None
             
         # Query for parameters for this specific bridge
         cursor.execute(
-            "SELECT deck_width, bottom_shift_percentage, arch_fractions, pier_size_meters, "
-            "circular_arch, arch_height_fraction FROM bridge_parameters WHERE bridge_id = ?", 
-            (str(bridge_id),)
+            "SELECT deck_width, bottom_shift_percentage, arch_fractions, pier_size, "
+            "circular_arch, arch_height_fraction FROM bridge_parameters WHERE uuid = ?", 
+            (str(bridge_uuid),)
         )
         
         result = cursor.fetchone()
@@ -338,6 +359,7 @@ def read_ogr_dataset(input_path, parallel=False, max_workers=None):
     if not parallel:
         # Original sequential processing
         features = []
+        # add a progress bar for looping through each feature. AI!
         for i, feature in enumerate(layer):
             attributes = {}
             for field in field_names:
@@ -399,11 +421,13 @@ def read_ogr_dataset(input_path, parallel=False, max_workers=None):
                     arch_height_fraction = 0.8
 
                     # Check if there are custom parameters in the database
-                    bridge_id = attributes.get('id', i)  # Use feature ID or index as fallback
-                    custom_params = get_bridge_parameters_from_db(bridge_id)
-                    
+                    bridge_uuid = feature.GetField("UUID")  # Use feature ID or index as fallback
+                    assert bridge_uuid, "Undefined UUID for a bridge feature"
+                    custom_params = get_bridge_parameters_from_db(bridge_uuid)
+
                     if custom_params:
                         # Override defaults with custom parameters where provided
+                        logger.info(f"found custom parameters for {bridge_uuid}")
                         if custom_params['deck_width'] is not None:
                             deck_width = custom_params['deck_width']
                         if custom_params['bottom_shift_percentage'] is not None:
