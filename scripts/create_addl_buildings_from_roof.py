@@ -23,20 +23,26 @@ def main(buildings_file, roofs_file, output_file):
     assert buildings.crs == roofs.crs
 
     # convert to polygons
+    print(f"convert to polygons")
     roofs['geometry'] = roofs['geometry'].apply(multiline_to_multipolygon)
     buildings['geometry'] = buildings['geometry'].apply(multiline_to_multipolygon)
 
     # identify candidates for missing buildings based on roof
+    print(f"identify missing building candidates based on roof points")
     representative_roof_points = roofs.copy()
     representative_roof_points['geometry'] = representative_roof_points.geometry.representative_point()
-    
-    joined = geopandas.sjoin(representative_roof_points, buildings, how='left', predicate='within')
-    uncovered_roof_candidates = roofs[joined['index_right'].isna().values]
+
+    joined = geopandas.sjoin(
+        representative_roof_points, buildings, how='left', predicate='within'
+    ).reset_index()    
+    uncovered_roof_candidates = roofs.loc[joined.loc[joined['index_right'].isna(), 'index']]
 
     # filter candidates by
     # Keep only roofs that remain after difference (i.e., not fully covered)
+    print(f"keep only roofs that have no intersection with other buildings")
     uncovered_roofs = uncovered_roof_candidates[uncovered_roof_candidates.geometry.apply(lambda g: not buildings.geometry.intersects(g).any())]
 
+    print(f"Save file to {output_file}")    
     uncovered_roofs.to_parquet(output_file,
                                index=False,
                                schema_version='1.1.0',
