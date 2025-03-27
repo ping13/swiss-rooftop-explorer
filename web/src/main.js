@@ -30,7 +30,7 @@ if (!maplibregl) {
 }
 
 // Manually Prefix PMTILES_URL with import.meta.env.BASE_URL as defined in vite.config.js
-const PMTILES_URL = import.meta.env.BASE_URL + "/roofs.pmtiles";
+const PMTILES_URL = import.meta.env.BASE_URL + "/buildings.pmtiles";
 
 let protocol = new Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
@@ -174,8 +174,11 @@ map.on('click', 'roofs-fill', (e) => {
     if (properties.year) {
         html += `<tr><td>Year of Digitization</td><td>${properties.year}</td></tr>`;
     }
+    if (properties.type) {
+        html += `<tr><td>Type</td><td>${properties.type}</td></tr>`;
+    }
     if (properties.objecttype) {
-        html += `<tr><td>Building Type</td><td>${properties.objecttype}</td></tr>`;
+        html += `<tr><td>Roof Type</td><td>${properties.objecttype}</td></tr>`;
     }
     html += '</table>';
 
