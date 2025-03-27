@@ -17,8 +17,6 @@ def multiline_to_multipolygon(geom):
 def main(buildings_file, roofs_file, output_file):
     buildings = geopandas.read_file(buildings_file)
     roofs = geopandas.read_file(roofs_file)
-    buildings.drop(columns=["obj"], inplace=True)
-    roofs.drop(columns=["obj"], inplace=True)
     print(f"found {len(buildings)} buildings and {len(roofs)} roofs")
     assert buildings.crs == roofs.crs
 
