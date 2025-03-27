@@ -9,7 +9,7 @@ def multiline_to_multipolygon(geom):
         return Polygon(geom)
     return geom
 
-
+# add a CLI interface to define the input files and the output file. AI!
 def main():
     buildings = geopandas.read_file('assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet')
     roofs = geopandas.read_file('assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet')
