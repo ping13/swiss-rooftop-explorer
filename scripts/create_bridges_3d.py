@@ -359,8 +359,10 @@ def read_ogr_dataset(input_path, parallel=False, max_workers=None):
     if not parallel:
         # Original sequential processing
         features = []
-        # add a progress bar for looping through each feature. AI!
-        for i, feature in enumerate(layer):
+        # Get total feature count for progress bar
+        feature_count = layer.GetFeatureCount()
+        from tqdm import tqdm
+        for i, feature in enumerate(tqdm(layer, total=feature_count, desc="Processing features")):
             attributes = {}
             for field in field_names:
                 attributes[field] = feature.GetField(field)
