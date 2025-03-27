@@ -39,13 +39,14 @@ assets/dependency_processing.png: Makefile
 
 download:	assets/data.sqlite assets/swissBUILDINGS3D_3_0.gdb/gdb assets/swissBUILDINGS3D_3-0_1112-13.gdb/gdb assets/data.sqlite $(SWISSTLM3D_FILENAME) ## download and unzip buildings, address data and TLM data (may take a while, large data)
 
-publish:	assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet  assets/railway_bridges.parquet assets/road_bridges.parquet ## publish parquet files to the data dir
+publish:	assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet  assets/railway_bridges.parquet assets/road_bridges.parquet assets/missing_buildings.parquet ## publish parquet files to the data dir
 	rsync -av --progress $(dir $(word 1, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -av --progress $(dir $(word 2, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -av --progress $(dir $(word 3, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -av --progress $(dir $(word 4, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -av --progress $(word 5, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -av --progress $(word 6, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -av --progress $(word 7, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
 
 # this downloads the latest address database and unzips to have access to the SQLite databae
 assets/data.sqlite:
@@ -112,7 +113,7 @@ assets/missing_buildings_small.parquet: assets/swissBUILDINGS3D_3-0_1112-13_Buil
 	time python scripts/create_addl_buildings_from_roof.py --buildings-file $(word 1,$^) --roofs-file $(word 2,$^)  --output-file $@
 
 assets/missing_buildings.parquet: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet scripts/create_addl_buildings_from_roof.py
-	@echo "create missing buildings (like Letzigrund etc) from roofs. There are 2.5 mio buildings, but 3.2 mio roofs. Takes 15 mins on my laptop"
+	@echo "create missing buildings (like Letzigrund etc) from roofs. There are 2.5 mio buildings, but 3.2 mio roofs. Takes ~85 mins on my laptop"
 	time python scripts/create_addl_buildings_from_roof.py --buildings-file $(word 1,$^) --roofs-file $(word 2,$^)  --output-file $@
 
 # web/public/roofs.pmtiles: assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet assets/railway_bridges.parquet assets/road_bridges.parquet scripts/pq2pmtiles.sh
@@ -120,6 +121,7 @@ assets/missing_buildings.parquet: assets/swissBUILDINGS3D_3_0_Building_solid_2d/
 # 	time bash scripts/pq2pmtiles.sh $(word 1, $^) $(word 2, $^) $(word 3, $^) $(word 2, $^) $@
 
 web/public/buildings.pmtiles: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet assets/railway_bridges.parquet assets/road_bridges.parquet assets/missing_buildings.parquet scripts/pq2pmtiles.sh
+	@echo "create the PM Tiles with buildings and bridges"
 	mkdir -p web/public/
 	time bash scripts/pq2pmtiles.sh $(word 1, $^) $(word 2, $^) $(word 3, $^) $(word 4, $^) $@
 
