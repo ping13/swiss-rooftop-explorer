@@ -148,6 +148,70 @@ def mesh_to_compressed_obj(mesh):
     
     return compressed_obj
 
+def get_bridge_parameters_from_db(bridge_id, db_path="bridges.sqlite"):
+    """
+    Check if there are custom bridge parameters in the SQLite database.
+    
+    Parameters:
+    -----------
+    bridge_id : str or int
+        Identifier for the bridge to look up
+    db_path : str, optional
+        Path to the SQLite database file
+        
+    Returns:
+    --------
+    dict or None
+        Dictionary of bridge parameters if found, None otherwise
+    """
+    if not os.path.exists(db_path):
+        return None
+        
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Check if the table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bridge_parameters'")
+        if not cursor.fetchone():
+            conn.close()
+            return None
+            
+        # Query for parameters for this specific bridge
+        cursor.execute(
+            "SELECT deck_width, bottom_shift_percentage, arch_fractions, pier_size_meters, "
+            "circular_arch, arch_height_fraction FROM bridge_parameters WHERE bridge_id = ?", 
+            (str(bridge_id),)
+        )
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            # Parse arch_fractions from string if it exists
+            arch_fractions_str = result[2]
+            if arch_fractions_str and arch_fractions_str.strip():
+                try:
+                    arch_fractions = [float(x) for x in arch_fractions_str.split(',')]
+                except ValueError:
+                    arch_fractions = None
+            else:
+                arch_fractions = None
+                
+            return {
+                'deck_width': float(result[0]) if result[0] is not None else None,
+                'bottom_shift_percentage': float(result[1]) if result[1] is not None else None,
+                'arch_fractions': arch_fractions,
+                'pier_size_meters': float(result[3]) if result[3] is not None else None,
+                'circular_arch': bool(result[4]) if result[4] is not None else None,
+                'arch_height_fraction': float(result[5]) if result[5] is not None else None
+            }
+        return None
+    except Exception as e:
+        print(f"Error reading bridge parameters from database: {e}")
+        return None
+
 def _process_feature(feature_data):
     """Process a single feature in a separate process"""
     feature, field_names = feature_data
@@ -334,7 +398,24 @@ def read_ogr_dataset(input_path, parallel=False, max_workers=None):
                     circular_arch = False
                     arch_height_fraction = 0.8
 
-                    # check if the table bridge_parameters in the sqlite table bridge:_parameters overrides the chosen default. AI!
+                    # Check if there are custom parameters in the database
+                    bridge_id = attributes.get('id', i)  # Use feature ID or index as fallback
+                    custom_params = get_bridge_parameters_from_db(bridge_id)
+                    
+                    if custom_params:
+                        # Override defaults with custom parameters where provided
+                        if custom_params['deck_width'] is not None:
+                            deck_width = custom_params['deck_width']
+                        if custom_params['bottom_shift_percentage'] is not None:
+                            bottom_shift_percentage = custom_params['bottom_shift_percentage']
+                        if custom_params['arch_fractions'] is not None:
+                            arch_fractions = custom_params['arch_fractions']
+                        if custom_params['pier_size_meters'] is not None:
+                            pier_size_meters = custom_params['pier_size_meters']
+                        if custom_params['circular_arch'] is not None:
+                            circular_arch = custom_params['circular_arch']
+                        if custom_params['arch_height_fraction'] is not None:
+                            arch_height_fraction = custom_params['arch_height_fraction']
                     
                     bridge_mesh, footprint = create_bridge(
                         shapely_geom,
