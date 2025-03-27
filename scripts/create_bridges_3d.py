@@ -290,11 +290,13 @@ def read_ogr_dataset(input_path, parallel=False, max_workers=None):
                     # calc length
                     length_3d = shapely_geom.length
 
-                    ## create bridge, first define parameters
-                    artificial_height = 60  # TODO: see below
+                    ## create bridges,
+                    ## - let's define some sensible default parameters 
                     default_railway_width = 8
                     default_road_width = 3
                     autobahn_width = 20
+
+                    # - let's check feature attributes for some clues
                     if "anzahl_spuren" in field_names: # Railway Bridges
                         deck_width= default_railway_width * int(feature.GetField("anzahl_spuren"))
                     elif "objektart" in field_names: # Road Bridges
@@ -313,11 +315,13 @@ def read_ogr_dataset(input_path, parallel=False, max_workers=None):
                     else:
                         raise Exception("Cannot determine the width of the bridge deck for {attributes}")
 
-                        
+                    # we don't assume the piers to be larger at the bottom by default
                     bottom_shift_percentage = 0
+                    
                     # get the min elevation based on the SwissTopo DEM service, and put in 10 m into the ground to be sure
                     min_elevation = get_min_height_swissalti_service(shapely_geom) - 10
-                    #min_elevation = get_min_z(shapely_geom) - artificial_height # TODO: get the real minimum z
+
+                    # let's define arch_fractions and pier size based on the feature's length
                     if length_3d < 20:
                         arch_fractions = None
                         pier_size_meters = max(1, length_3d * 0.15)
@@ -326,8 +330,11 @@ def read_ogr_dataset(input_path, parallel=False, max_workers=None):
                         arch_fractions = [ 1/n ] * n
                         pier_size_meters = 3
 
+                    # by default, archs are not circular and have a certain height
                     circular_arch = False
                     arch_height_fraction = 0.8
+
+                    # check if the table bridge_parameters in the sqlite table bridge:_parameters overrides the chosen default. AI!
                     
                     bridge_mesh, footprint = create_bridge(
                         shapely_geom,
