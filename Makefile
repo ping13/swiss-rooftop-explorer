@@ -119,15 +119,18 @@ web/public/buildings.pmtiles: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chun
 ### ETL Road and Railway Bridges - TLM
 
 assets/bridge_parameters.db: scripts/create_bridge_db.sh
+	@echo "Initializes the bridge parameters DB if it doesn't exist yet"
 	bash scripts/create_bridge_db.sh $@
 
 create_bridges: assets/road_bridges.parquet assets/railway_bridges.parquet ## create parametrized 3D bridges
 
 assets/railway_bridges.parquet: assets/railway_bridges.gpkg.zip scripts/create_bridges_3d.py assets/bridge_parameters.db
-	python scripts/create_bridges_3d.py $< $@
+	@echo "Create railway bridges"
+	time python scripts/create_bridges_3d.py $< $@
 
 assets/road_bridges.parquet: assets/road_bridges.gpkg.zip scripts/create_bridges_3d.py assets/bridge_parameters.db
-	python scripts/create_bridges_3d.py $< $@
+	@echo "Create road bridges"
+	time python scripts/create_bridges_3d.py $< $@
 
 assets/road_bridges.gpkg.zip: $(SWISSTLM3D_FILENAME)
 	echo "creating road bridges, will take some time"

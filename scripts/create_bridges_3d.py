@@ -442,7 +442,20 @@ def read_ogr_dataset(input_path, parallel=False, max_workers=None):
                             circular_arch = custom_params['circular_arch']
                         if custom_params['arch_height_fraction'] is not None:
                             arch_height_fraction = custom_params['arch_height_fraction']
-                    
+                        logger.debug("Custom parameters: deck_width={}, bottom_shift_percentage={}, arch_fractions={}, "
+                                     "pier_size_meters={}, circular_arch={}, arch_height_fraction={}".format(
+                                         custom_params['deck_width'], 
+                                         custom_params['bottom_shift_percentage'], 
+                                         custom_params['arch_fractions'], 
+                                         custom_params['pier_size_meters'], 
+                                         custom_params['circular_arch'], 
+                                         custom_params['arch_height_fraction']
+                                    ))                        
+                        # if deck_width is deliberately set to 0, we ignore this bridge feature
+                        if deck_width == 0:
+                            logger.info(f"the custom deck_width for {bridge_uuid} is 0, we are skipping this.")
+                            continue
+                        
                     bridge_mesh, footprint = create_bridge(
                         shapely_geom,
                         deck_width=deck_width,

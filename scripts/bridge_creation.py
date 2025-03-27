@@ -643,7 +643,7 @@ def create_arches(
         arch_fractions = [f / total for f in arch_fractions]
 
     num_arches = len(arch_fractions)
-    logger.info(f"Creating {num_arches} arches based on provided fractions")
+    logger.debug(f"Creating {num_arches} arches based on provided fractions")
 
     # Calculate the effective length available for arches (accounting for piers)
     # Each arch needs half a pier on each side, including the first and last arches
@@ -712,10 +712,10 @@ def create_bridge(
     circular_arch=True,
     arch_height_fraction=0.8,
 ):
-    logger.info(f"Create bridge with deck_width={deck_width}, min_elevation={min_elevation:.1f}, circular_arch={circular_arch}, arch_height_fraction={arch_height_fraction}")
+    logger.debug(f"Create bridge with deck_width={deck_width}, min_elevation={min_elevation:.1f}, circular_arch={circular_arch}, arch_height_fraction={arch_height_fraction}")
     # Convert to list of coordinates if input is a shapely.LineString
     if isinstance(line3d_swiss, LineString):
-        logger.info(f"Received a line segment with {line3d_swiss.length:.1f} meters")
+        logger.debug(f"Received a line segment with {line3d_swiss.length:.1f} meters")
         # Extract coordinates from the LineString
         coords_2d = list(line3d_swiss.coords)
         # We need to ensure we have z-coordinates
