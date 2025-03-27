@@ -57,7 +57,7 @@ def get_min_height_swissalti_service(linestring: LineString) -> float:
         if not heights:
             raise httpx.HTTPStatusError("No valid elevation data returned.")
         return min(heights)
-    except httpx.HTTPStatusError as e:
+    except (httpx.HTTPStatusError, httpx.ReadTimeout) as e:
         if e.response.status_code >= 400:
             # If status is 400, calculate a fallback height
             # Find the smallest z-coordinate and subtract 100m

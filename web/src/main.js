@@ -181,11 +181,11 @@ map.on('click', 'roofs-fill', (e) => {
     if (properties.year) {
         html += `<tr><td>Year of Digitization</td><td>${properties.year}</td></tr>`;
     }
-    if (properties.type) {
-        html += `<tr><td>Type</td><td>${properties.type}</td></tr>`;
-    }
+    // if (properties.id) {
+    //     html += `<tr><td>ID</td><td>${properties.id}</td></tr>`;
+    // }
     if (properties.objecttype) {
-        html += `<tr><td>Roof Type</td><td>${properties.objecttype}</td></tr>`;
+        html += `<tr><td>Object Type</td><td>${properties.objecttype}</td></tr>`;
     }
     html += '</table>';
 

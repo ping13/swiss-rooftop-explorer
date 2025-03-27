@@ -8,6 +8,7 @@ dependencies = [
     "dask-geopandas>=0.4.3",
     "gdal",
     "geopandas[all]>=1.0.1",
+    "hishel>=0.1.1",
     "psutil>=6.1.1",
     "pyarrow>=19.0.0",
     "shapely>=2.0.6",

@@ -24,6 +24,12 @@ PARQUET_FILES = assets/swissBUILDINGS3D_3-0_1112-13_Building_solid/chunk_00.parq
 
 PARQUET_FILES_2D := $(patsubst %/chunk_00.parquet,%_2d/chunk_00.parquet,$(PARQUET_FILES))
 
+
+SWISSTLM3D_URL = https://data.geo.admin.ch/ch.swisstopo.swisstlm3d/swisstlm3d_2024-03/swisstlm3d_2024-03_2056_5728.gpkg.zip
+SWISSTLM3D_BASENAME = $(notdir $(SWISSTLM3D_URL))
+# adjust the absolute path of SWISSTLM3D_FILENAME to your liking
+SWISSTLM3D_FILENAME = $(HOME)/data/swisstopo/$(SWISSTLM3D_BASENAME)
+
 ### ETL
 
 dependency: assets/dependency_processing.png ## Show the dependency graph of this Makefile
@@ -31,34 +37,45 @@ dependency: assets/dependency_processing.png ## Show the dependency graph of thi
 assets/dependency_processing.png: Makefile 	
 	uvx makefile2dot --direction LR | dot -Tpng > $@
 
-download:	assets/data.sqlite assets/swissBUILDINGS3D_3_0.gdb/gdb assets/swissBUILDINGS3D_3-0_1112-13.gdb/gdb assets/data.sqlite	## download and unzip buildings and address data (may take a while, large data)
+download:	assets/data.sqlite assets/swissBUILDINGS3D_3_0.gdb/gdb assets/swissBUILDINGS3D_3-0_1112-13.gdb/gdb assets/data.sqlite $(SWISSTLM3D_FILENAME) ## download and unzip buildings, address data and TLM data (may take a while, large data)
 
-publish:	assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet  ## publish parquet files to the data dir
-	rsync -av --progress assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d ping13@s022.cyon.net:~/public_html/ping13.net/data
-	rsync -av --progress assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d ping13@s022.cyon.net:~/public_html/ping13.net/data
-	rsync -av --progress assets/swissBUILDINGS3D_3_0_Building_solid_2d ping13@s022.cyon.net:~/public_html/ping13.net/data
-	rsync -av --progress assets/swissBUILDINGS3D_3_0_Roof_solid_2d ping13@s022.cyon.net:~/public_html/ping13.net/data
+publish:	assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet  assets/railway_bridges.parquet assets/road_bridges.parquet ## publish parquet files to the data dir
+	rsync -av --progress $(dir $(word 1, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -av --progress $(dir $(word 2, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -av --progress $(dir $(word 3, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -av --progress $(dir $(word 4, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -av --progress $(word 5, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -av --progress $(word 6, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
 
 # this downloads the latest address database and unzips to have access to the SQLite databae
 assets/data.sqlite:
+	echo "Downloading Address data set"
 	mkdir -p assets
 	curl -J --output assets/data.sqlite "https://public.madd.bfs.admin.ch/data_ch.sqlite"
 
 assets/swissBUILDINGS3D_3_0.gdb.zip:
+	echo "Downloading Swiss Buildings"
 	curl -J --output $@ "https://data.geo.admin.ch/ch.swisstopo.swissbuildings3d_3_0/swissbuildings3d_3_0_2024/swissbuildings3d_3_0_2024_2056_5728.gdb.zip"
 
 assets/swissBUILDINGS3D_3_0.gdb/gdb: assets/swissBUILDINGS3D_3_0.gdb.zip
 	(cd assets; unzip swissBUILDINGS3D_3_0.gdb.zip && cd .. && touch $@ )
 
 assets/swissBUILDINGS3D_3-0_1112-13.gdb.zip:
+	echo "Downloading subset of Swiss Buildings"
 	curl -J --output $@ "https://data.geo.admin.ch/ch.swisstopo.swissbuildings3d_3_0/swissbuildings3d_3_0_2019_1112-13/swissbuildings3d_3_0_2019_1112-13_2056_5728.gdb.zip"
 
 assets/swissBUILDINGS3D_3-0_1112-13.gdb/gdb: assets/swissBUILDINGS3D_3-0_1112-13.gdb.zip
 	(cd assets; unzip -o swissBUILDINGS3D_3-0_1112-13.gdb.zip && cd .. && touch $@ )
 
+$(SWISSTLM3D_FILE):
+	echo "Downloading SwissTLM3D, beware, this is huge"
+	mkdir -p `dirname $@`
+	curl -o "$@" "$(SWISSTLM3D_URL)"
+
+
 ### ETL Addresses
 
-create_addresses:	web/public/addresses_full.parquet web/public/addresses.parquet	## create the address parquet files
+create_addresses: web/public/addresses_full.parquet web/public/addresses.parquet	## create the address parquet files
 
 web/public/addresses_full.parquet: scripts/addresses_sqlite2pq.py assets/data.sqlite
 	mkdir -p web/public
@@ -75,7 +92,7 @@ init: 				## initialize Python environment (conda)
 
 create_buildings: $(PARQUET_FILES) $(PARQUET_FILES_2D)	## create building parquet files
 
-pmtiles: web/public/roofs.pmtiles web/public/buildings.pmtiles web/public/roofs-small.pmtiles	## calculate building pmtiles for the web
+pmtiles: web/public/roofs.pmtiles web/public/buildings.pmtiles 	## calculate building pmtiles for the web
 
 %_Roof_solid/chunk_00.parquet: %.gdb/gdb scripts/swissbuildings3D_gdb2pq.py
 	time python scripts/swissbuildings3D_gdb2pq.py $(patsubst %.gdb/gdb,%.gdb,$<) Roof_solid --chunk 100000
@@ -91,18 +108,37 @@ pmtiles: web/public/roofs.pmtiles web/public/buildings.pmtiles web/public/roofs-
 	@echo "Creating $@"
 	python scripts/swissbuildings3D_process.py $(patsubst %/chunk_00.parquet,%,$<)
 
-web/public/roofs.pmtiles: assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet scripts/pq2pmtiles.sh
+web/public/roofs.pmtiles: assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet assets/railway_bridges.parquet assets/road_bridges.parquet scripts/pq2pmtiles.sh
 	mkdir -p web/public/
-	time bash scripts/pq2pmtiles.sh $< $@
+	time bash scripts/pq2pmtiles.sh $(word 1, $^) $(word 2, $^) $(word 3, $^) $@
 
-web/public/buildings.pmtiles: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet scripts/pq2pmtiles.sh
+web/public/buildings.pmtiles: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet assets/railway_bridges.parquet assets/road_bridges.parquet scripts/pq2pmtiles.sh
 	mkdir -p web/public/
-	time bash scripts/pq2pmtiles.sh $< $@
+	time bash scripts/pq2pmtiles.sh $(word 1, $^) $(word 2, $^) $(word 3, $^) $@
 
+### ETL Road and Railway Bridges - TLM
 
-web/public/roofs-small.pmtiles: assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet scripts/pq2pmtiles.sh
-	mkdir -p web/public/
-	time bash scripts/pq2pmtiles.sh $< $@
+assets/bridge_parameters.db: scripts/create_bridge_db.sh
+	bash scripts/create_bridge_db.sh $@
+
+create_bridges: assets/road_bridges.parquet assets/railway_bridges.parquet ## create parametrized 3D bridges
+
+assets/railway_bridges.parquet: assets/railway_bridges.gpkg.zip scripts/create_bridges_3d.py assets/bridge_parameters.db
+	python scripts/create_bridges_3d.py $< $@
+
+assets/road_bridges.parquet: assets/road_bridges.gpkg.zip scripts/create_bridges_3d.py assets/bridge_parameters.db
+	python scripts/create_bridges_3d.py $< $@
+
+assets/road_bridges.gpkg.zip: $(SWISSTLM3D_FILENAME)
+	echo "creating road bridges, will take some time"
+	mkdir -p `dirname $@`
+	ogr2ogr -f GPKG $@ $(SWISSTLM3D_FILENAME) tlm_strassen_strasse \
+	  -where "kunstbaute = 'Bruecke' OR kunstbaute = 'Bruecke mit Galerie' OR kunstbaute = 'Gedeckte Bruecke'"
+
+assets/railway_bridges.gpkg.zip: $(SWISSTLM3D_FILENAME)
+	echo "creating railway bridges, will take some time"
+	mkdir -p `dirname $@`
+	ogr2ogr -f GPKG $@ $(SWISSTLM3D_FILENAME) tlm_oev_eisenbahn -where "(kunstbaute = 'Bruecke' OR kunstbaute = 'Bruecke mit Galerie' OR kunstbaute = 'Gedeckte Bruecke') AND anzahl_spuren > 0 AND verkehrsmittel = 'Bahn'"
 
 
 ### Web
