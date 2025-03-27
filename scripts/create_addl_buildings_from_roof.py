@@ -1,3 +1,4 @@
+import click
 import geopandas
 from shapely.geometry import Polygon, LineString, MultiLineString, MultiPolygon
 
@@ -9,10 +10,13 @@ def multiline_to_multipolygon(geom):
         return Polygon(geom)
     return geom
 
-# add a CLI interface to define the input files and the output file. AI!
-def main():
-    buildings = geopandas.read_file('assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet')
-    roofs = geopandas.read_file('assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet')
+@click.command()
+@click.option('--buildings-file', required=True, help='Path to the buildings parquet file')
+@click.option('--roofs-file', required=True, help='Path to the roofs parquet file')
+@click.option('--output-file', required=True, help='Path to the output parquet file for missing buildings')
+def main(buildings_file, roofs_file, output_file):
+    buildings = geopandas.read_file(buildings_file)
+    roofs = geopandas.read_file(roofs_file)
     buildings.drop(columns=["obj"], inplace=True)
     roofs.drop(columns=["obj"], inplace=True)
     print(f"found {len(buildings)} buildings and {len(roofs)} roofs")
@@ -33,7 +37,7 @@ def main():
     # Keep only roofs that remain after difference (i.e., not fully covered)
     uncovered_roofs = uncovered_roof_candidates[uncovered_roof_candidates.geometry.apply(lambda g: not buildings.geometry.intersects(g).any())]
 
-    uncovered_roofs.to_parquet("assets/missing_buildings_small.parquet",
+    uncovered_roofs.to_parquet(output_file,
                                index=False,
                                schema_version='1.1.0',
                                write_covering_bbox=True,
