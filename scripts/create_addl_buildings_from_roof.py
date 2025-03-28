@@ -18,7 +18,8 @@ def multiline_to_multipolygon(geom):
 @click.option('--buildings-file', required=True, help='Path to the buildings parquet file')
 @click.option('--roofs-file', required=True, help='Path to the roofs parquet file')
 @click.option('--output-file', required=True, help='Path to the output parquet file for missing buildings')
-def main(buildings_file, roofs_file, output_file, coverage_threshold = 0.3):
+@click.option('--coverage-threshold', default=0.3, type=float, help='Threshold for building coverage (default: 0.3)')
+def main(buildings_file, roofs_file, output_file, coverage_threshold):
     print(f"read buildings")
     buildings = gpd.read_file(buildings_file)
     print(f"read roofs")
