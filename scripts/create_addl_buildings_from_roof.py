@@ -23,7 +23,7 @@ def main(buildings_file, roofs_file, output_file, coverage_threshold = 0.3):
     buildings = gpd.read_file(buildings_file)
     print(f"read roofs")
     roofs = gpd.read_file(roofs_file)
-    roofs_copy = roofs_copy()
+    roofs_copy = roofs.copy()
     print(f"found {len(buildings)} buildings and {len(roofs_copy)} roofs")
     assert buildings.crs == roofs_copy.crs
 
@@ -35,6 +35,8 @@ def main(buildings_file, roofs_file, output_file, coverage_threshold = 0.3):
     # Add unique ID to roofs
     roofs_copy = roofs_copy.reset_index(drop=True)
     roofs_copy["roof_id"] = roofs_copy.index
+    roofs = roofs.reset_index(drop=True)
+    roofs["roof_id"] = roofs.index
 
     # Compute intersection
     print(f"compute intersection")
@@ -56,7 +58,12 @@ def main(buildings_file, roofs_file, output_file, coverage_threshold = 0.3):
     print(f"filter")
     selected = roofs_copy[roofs_copy["coverage"] < coverage_threshold]
 
-    # Use the original geometry of roofs instead of the one with roofs_copy. AI!
+    # Use the original geometry of roofs instead of the one with roofs_copy
+    selected = selected.drop(columns=['geometry']).merge(
+        roofs[['roof_id', 'geometry']], 
+        on='roof_id', 
+        how='left'
+    )
     
     print(f"Save file to {output_file}")    
     selected.to_parquet(output_file,
