@@ -1,51 +1,69 @@
 import click
-import geopandas
+import pandas as pd
+import geopandas as gpd
 from shapely.geometry import Polygon, LineString, MultiLineString, MultiPolygon
 
 def multiline_to_multipolygon(geom):
     if isinstance(geom, MultiLineString):
         polygons = [Polygon(ls) for ls in geom.geoms if ls.is_ring]
-        return MultiPolygon(polygons) if polygons else geom
+        return MultiPolygon(polygons)
     elif isinstance(geom, LineString):
-        return Polygon(geom)
-    return geom
+        return MultiPolygon[Polygon(geom)]
+    else:
+        raise Exception("unhandled geom {geom.geom_type}")
+
+
 
 @click.command()
 @click.option('--buildings-file', required=True, help='Path to the buildings parquet file')
 @click.option('--roofs-file', required=True, help='Path to the roofs parquet file')
 @click.option('--output-file', required=True, help='Path to the output parquet file for missing buildings')
-def main(buildings_file, roofs_file, output_file):
-    buildings = geopandas.read_file(buildings_file)
-    roofs = geopandas.read_file(roofs_file)
-    print(f"found {len(buildings)} buildings and {len(roofs)} roofs")
-    assert buildings.crs == roofs.crs
+def main(buildings_file, roofs_file, output_file, coverage_threshold = 0.3):
+    print(f"read buildings")
+    buildings = gpd.read_file(buildings_file)
+    print(f"read roofs")
+    roofs = gpd.read_file(roofs_file)
+    roofs_copy = roofs_copy()
+    print(f"found {len(buildings)} buildings and {len(roofs_copy)} roofs")
+    assert buildings.crs == roofs_copy.crs
 
     # convert to polygons
-    print(f"convert to polygons")
-    roofs['geometry'] = roofs['geometry'].apply(multiline_to_multipolygon)
+    print(f"convert both to polygons")
+    roofs_copy['geometry'] = roofs_copy['geometry'].apply(multiline_to_multipolygon)
     buildings['geometry'] = buildings['geometry'].apply(multiline_to_multipolygon)
 
-    # identify candidates for missing buildings based on roof
-    print(f"identify missing building candidates based on roof points")
-    representative_roof_points = roofs.copy()
-    representative_roof_points['geometry'] = representative_roof_points.geometry.representative_point()
+    # Add unique ID to roofs
+    roofs_copy = roofs_copy.reset_index(drop=True)
+    roofs_copy["roof_id"] = roofs_copy.index
 
-    joined = geopandas.sjoin(
-        representative_roof_points, buildings, how='left', predicate='within'
-    ).reset_index()    
-    uncovered_roof_candidates = roofs.loc[joined.loc[joined['index_right'].isna(), 'index']]
+    # Compute intersection
+    print(f"compute intersection")
+    intersection = gpd.overlay(roofs_copy, buildings, how="intersection")
 
-    # filter candidates by
-    # Keep only roofs that remain after difference (i.e., not fully covered)
-    print(f"keep only roofs that have no intersection with other buildings")
-    uncovered_roofs = uncovered_roof_candidates[uncovered_roof_candidates.geometry.apply(lambda g: not buildings.geometry.intersects(g).any())]
+    # Compute areas
+    roofs_copy["area"] = roofs_copy.geometry.area
+    intersection["inter_area"] = intersection.geometry.area
 
+    # Sum intersection area per roof_id
+    print(f"sum intersection")
+    inter_area_sum = intersection.groupby("roof_id")["inter_area"].sum()
+
+    # Map to roofs
+    roofs_copy["inter_area"] = roofs_copy["roof_id"].map(inter_area_sum).fillna(0)
+    roofs_copy["coverage"] = roofs_copy["inter_area"] / roofs_copy["area"]
+
+    # Filter
+    print(f"filter")
+    selected = roofs_copy[roofs_copy["coverage"] < coverage_threshold]
+
+    # Use the original geometry of roofs instead of the one with roofs_copy. AI!
+    
     print(f"Save file to {output_file}")    
-    uncovered_roofs.to_parquet(output_file,
-                               index=False,
-                               schema_version='1.1.0',
-                               write_covering_bbox=True,
-                               compression='snappy')
+    selected.to_parquet(output_file,
+                        index=False,
+                        schema_version='1.1.0',
+                        write_covering_bbox=True,
+                        compression='snappy')
 
 if __name__ == "__main__":
     main()
