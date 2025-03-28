@@ -113,12 +113,9 @@ assets/missing_buildings_small.parquet: assets/swissBUILDINGS3D_3-0_1112-13_Buil
 	time python scripts/create_addl_buildings_from_roof.py --buildings-file $(word 1,$^) --roofs-file $(word 2,$^)  --output-file $@
 
 assets/missing_buildings.parquet: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet scripts/create_addl_buildings_from_roof.py
-	@echo "create missing buildings (like Letzigrund etc) from roofs. There are 2.5 mio buildings, but 3.2 mio roofs. Takes ~85 mins on my laptop"
+	@echo "create missing buildings (like Letzigrund etc) from roofs. There are 2.5 mio buildings, but 3.2 mio roofs."
 	time python scripts/create_addl_buildings_from_roof.py --buildings-file $(word 1,$^) --roofs-file $(word 2,$^)  --output-file $@
 
-# web/public/roofs.pmtiles: assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet assets/railway_bridges.parquet assets/road_bridges.parquet scripts/pq2pmtiles.sh
-# 	mkdir -p web/public/
-# 	time bash scripts/pq2pmtiles.sh $(word 1, $^) $(word 2, $^) $(word 3, $^) $(word 2, $^) $@
 
 web/public/buildings.pmtiles: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet assets/railway_bridges.parquet assets/road_bridges.parquet assets/missing_buildings.parquet scripts/pq2pmtiles.sh
 	@echo "create the PM Tiles with buildings and bridges"

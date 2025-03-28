@@ -4,7 +4,8 @@ set -e
 set -u
 set -o pipefail
 
-# load and convert from parquet file and pipe it in tippecanoe
+# load and convert from 4 parquet files, make sure to have the same JSON schema
+# and pipe it in tippecanoe
 duckdb -c "
 install spatial;
 load spatial;
@@ -65,7 +66,7 @@ COPY (
             'roof_max', DACH_MAX,
             'roof_min', DACH_MIN,
             'year', ERSTELLUNG_JAHR::INT,
-            'type', 3,
+            'type', 4,
             'id', ROW_NUMBER() OVER(),
             'objecttype', OBJEKTART::VARCHAR
         ) AS properties,

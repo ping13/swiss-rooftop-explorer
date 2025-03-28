@@ -87,11 +87,11 @@ const map = new maplibregl.Map({
                         [
                             "match",
                             ["get", "type"],
-                            1, "#8b0000",  // red (as it was before)
+                            1, "#8b0000",  // red (as it woas before)
                             2, "#B8860B",  // dark yellow
                             3, "#4D4D4D",  // dark grey
-                            4, "#ff0000",  // bright red
-                            "#8b0000"      // default to red for any other values
+                            4, "#0000ff",  // pink
+                            "#000000"      // default for any other values
                         ]
                     ],
                     "fill-opacity": 0.4
