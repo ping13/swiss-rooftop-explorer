@@ -1,3 +1,5 @@
+import sys
+import re
 import json
 import logging
 import numpy as np
@@ -8,6 +10,8 @@ import pyproj
 import shapely
 import pyvista as pv
 import click
+
+from utilities import get_min_height_swissalti_service, define_bridge_parameters
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -65,14 +69,14 @@ def repair_and_boolean_operation(mesh1, mesh2, bool_operation="intersection"):
 
 
 def create_bridge_deck(
-    line_swiss, deck_width, min_elevation, bottom_shift_percentage=0
+    line_swiss, deck_width_pair, min_elevation, bottom_shift_percentage=0
 ):
     """
     Create a bridge deck mesh that follows a path.
 
     Args:
         line_swiss: Array of 3D coordinates in Swiss coordinates defining the path
-        deck_width: Width of the bridge deck at the top in meters
+        deck_width_pair: pair of left and right width of the bridge deck at the top in meters
         min_elevation: Minimum elevation for the bottom of the deck
         bottom_shift_percentage: Percentage to increase/decrease the bottom width relative to the top width.
                                  Positive values make the bottom wider, negative values make it narrower.
@@ -80,8 +84,12 @@ def create_bridge_deck(
     Returns:
         trimesh.Trimesh: A mesh representing the bridge deck
     """
-    # Calculate bottom deck width based on the shift percentage
-    bottom_deck_width = deck_width + (bottom_shift_percentage * deck_width)
+    # Calculate bottom deck width based on the shift percentage    
+    bottom_deck_width_pair = ( deck_width_pair[0] + (bottom_shift_percentage * deck_width_pair[0]),
+                               deck_width_pair[1] + (bottom_shift_percentage * deck_width_pair[1]) )
+    deck_width = deck_width_pair[0] + deck_width_pair[1]
+    bottom_deck_width = bottom_deck_width_pair[0] + bottom_deck_width_pair[1]
+    
     # Convert input line to numpy array if it's not already
     coords = np.array(line_swiss)
     
@@ -108,8 +116,8 @@ def create_bridge_deck(
         perp = perp_vectors[i]
 
         # Create points for this cross-section (left edge, center, right edge)
-        left_edge = center - perp * (deck_width / 2)
-        right_edge = center + perp * (deck_width / 2)
+        left_edge = center - perp * deck_width_pair[1]
+        right_edge = center + perp * deck_width_pair[0]
 
         # Add vertices for top of deck
         all_vertices.append(left_edge)
@@ -117,11 +125,11 @@ def create_bridge_deck(
         all_vertices.append(right_edge)
 
         # Create points for bottom of deck (at min_elevation)
-        bottom_left = center - perp * (bottom_deck_width / 2)
+        bottom_left = center - perp * bottom_deck_width_pair[1]
         bottom_left[2] = min_elevation
         bottom_center = center.copy()
         bottom_center[2] = min_elevation
-        bottom_right = center + perp * (bottom_deck_width / 2)
+        bottom_right = center + perp * bottom_deck_width_pair[0]
         bottom_right[2] = min_elevation
 
         all_vertices.append(bottom_left)
@@ -257,14 +265,14 @@ def create_tapered_box(w, width, height):
 def create_box_arch(
     start_point,
     end_point,
-    width,
-    height,
+    deck_width,
+    box_heights,
     min_elevation,
     start_direction=None,
     end_direction=None,
     bottom_shift_meter=0,
     circular_arch=True,
-    arch_height_fraction=0.2,
+    arch_height=5,
 ):
     """
     Create a solid box arch between two 3D points with half-cylinders
@@ -274,19 +282,24 @@ def create_box_arch(
     Args:
         start_point: 3D coordinates of the starting point
         end_point: 3D coordinates of the ending point
-        width: Width of the box in meters
-        height: Height of the box from min_elevation
+        deck_width: Width of the deck in meters
+        box_height: tuple of heights of the box from min_elevation (start and end point)
         min_elevation: Minimum elevation for the bottom of the box
         start_direction: Direction vector at the start point (if None, calculated from start to end)
         end_direction: Direction vector at the end point (if None, calculated from start to end)
         bottom_shift_meter: How much to shift the bottom of the arch inward
         circular_arch: Whether to use circular arches
-        arch_height_fraction: What is the relative height from the deck to the highst part of an arch
+        arch_height: What is the height from the deck to the highst part of an arch
 
     Returns:
-        trimesh.Trimesh: A mesh representing the box arch with half-cylinders on top
+        trimesh.Trimesh: A mesh representing the box arch, possibly with a circular arch on top
     """
-    logger.debug(f"width={width}")
+    deck_width_max = deck_width * 5 # the arch we are building is a sbutraction
+                                    # solid, this makes sure thatthe
+                                    # subtraction solid is large enough to cut
+                                    # through the bridge deck
+    
+    logger.debug(f"width={deck_width}")
     # Convert input points to numpy arrays if they're not already
     start_point = np.array(start_point)
     end_point = np.array(end_point)
@@ -321,32 +334,32 @@ def create_box_arch(
     # Top corners at start point (perpendicular to start direction)
     top_start_left = np.array(
         [
-            start_point[0] - avg_perp[0] * (width / 2),
-            start_point[1] - avg_perp[1] * (width / 2),
-            min_elevation + height,
+            start_point[0] - avg_perp[0] * (deck_width_max),
+            start_point[1] - avg_perp[1] * (deck_width_max),
+            min_elevation + box_heights[0],
         ]
     )
     top_start_right = np.array(
         [
-            start_point[0] + avg_perp[0] * (width / 2),
-            start_point[1] + avg_perp[1] * (width / 2),
-            min_elevation + height,
+            start_point[0] + avg_perp[0] * (deck_width_max),
+            start_point[1] + avg_perp[1] * (deck_width_max),
+            min_elevation + box_heights[0],
         ]
     )
 
     # Top corners at end point (perpendicular to end direction)
     top_end_left = np.array(
         [
-            end_point[0] - avg_perp[0] * (width / 2),
-            end_point[1] - avg_perp[1] * (width / 2),
-            min_elevation + height,
+            end_point[0] - avg_perp[0] * (deck_width_max),
+            end_point[1] - avg_perp[1] * (deck_width_max),
+            min_elevation + box_heights[1],
         ]
     )
     top_end_right = np.array(
         [
-            end_point[0] + avg_perp[0] * (width / 2),
-            end_point[1] + avg_perp[1] * (width / 2),
-            min_elevation + height,
+            end_point[0] + avg_perp[0] * (deck_width_max),
+            end_point[1] + avg_perp[1] * (deck_width_max),
+            min_elevation + box_heights[1],
         ]
     )
 
@@ -410,48 +423,45 @@ def create_box_arch(
     # Create the box mesh
     box_mesh = trimesh.Trimesh(vertices=box_vertices, faces=box_faces)
 
-    def calc_distance_center_top_face(w, height, arch_to_deck_fraction):
+    def calc_distance_center_top_face(w, h0):
         """returns distance in meters from center to top face. If it's zero, we will get
         a half-cylinder. If it's above zero, the radius of the cyclinder
          becomes bigger, but the actual arch becomes shorter"""
-        w = distance_start_end
-        h0 = height * arch_to_deck_fraction
         d = ((w / 2) ** 2 - h0**2) / (2 * h0)
         if d < 0:
-            d = 0  # always ensure the arch is not larger than a cylinder
-        return d
+            return 0, w/2 # always ensure the arch is not larger than a cylinder
+        else:
+            return d, d + h0
 
     if circular_arch:
-        arch_to_deck_fraction = 1 - arch_height_fraction
         # calculate the cone for the arch
         cone = None
-        cone_segments = 60  # Number of segments for the cylinder
+        cone_segments = 100  # Number of segments for the cylinder
 
-        distance_center_top_face = calc_distance_center_top_face(
-            distance_start_end, height, arch_to_deck_fraction
+        distance_center_top_face, cylinder_radius = calc_distance_center_top_face(
+            distance_start_end, arch_height
         )
-
-        # Create the circular arch for the top face Parameters for the
-        # cylinder that defines the circular top
-        cylinder_radius = math.sqrt(
-            (distance_start_end / 2.0) ** 2 + distance_center_top_face**2
-        )
+        
 
         # Create a cylinder along the top face
         cone = trimesh.creation.cylinder(
-            radius=cylinder_radius, height=width, sections=cone_segments
+            radius=cylinder_radius, height=deck_width_max, sections=cone_segments
         )
 
         # create the extrusion box
-        extrusion_box = create_tapered_box(distance_start_end, width, height)
+        extrusion_box = create_tapered_box(distance_start_end, deck_width_max, max(box_heights)*10)
         # translate along y-axis to cut-out only the cylinder part that is needed
         translation = np.eye(4)
-        translation[1, 3] = width / 2 + distance_center_top_face
+        translation[1, 3] = deck_width_max*0.4 + distance_center_top_face
         extrusion_box.apply_transform(translation)
 
-        cone = repair_and_boolean_operation(
-            cone, extrusion_box, bool_operation="intersection"
-        )
+        try: 
+            cone = repair_and_boolean_operation(
+                cone, extrusion_box, bool_operation="intersection"
+            )
+        except AssertionError as e:
+            logger.warning(f"it seems that the cone does not intersect with the box : {e}")
+            
 
         # First rotate the cylinder to align with the Y axis
         # This puts the cylinder's axis along the Y axis
@@ -595,7 +605,7 @@ def interpolate_direction_at_distance(coords, target_distance):
 
 def create_arches(
     line_swiss,
-    arch_width,
+    deck_width,
     min_elevation,
     arch_fractions,
     arch_height_fraction,
@@ -610,7 +620,7 @@ def create_arches(
 
     Args:
         line_swiss: Array of 3D coordinates in Swiss coordinates defining the path
-        arch_width: Width of the arches in meters
+        deck_width_: width of the deck in meters
         min_elevation: Minimum elevation for the bottom of the arches
         arch_fractions: List of fractions (summing to 1) that determine the length of each arch
         arch_height_fraction: fraction of the height for an arch (e.g. 0.8)
@@ -676,7 +686,12 @@ def create_arches(
 
         # Calculate the height for the arch based on the average z-coordinate
         avg_z = (start_point[2] + end_point[2]) / 2
-        arch_height = (avg_z - min_elevation) * arch_height_fraction
+        average_bridge_height = avg_z - min_elevation
+        box_height_start, box_height_end = (start_point[2] - min_elevation) * arch_height_fraction, \
+            (end_point[2] - min_elevation) * arch_height_fraction
+        delta_deck_arch = 4 # min meter between deck and the arch, should be
+                            # based on the scale, let's assume 1:1000...
+        arch_height = max(2, (average_bridge_height * (1- arch_height_fraction)) - delta_deck_arch)
         logger.debug(f"Arch height for arch {i}: {arch_height}")
 
         # Calculate the direction vectors at start and end points
@@ -687,14 +702,14 @@ def create_arches(
         arch = create_box_arch(
             start_point=start_point,
             end_point=end_point,
-            width=arch_width,
-            height=arch_height,
+            deck_width=deck_width,
+            box_heights=(box_height_start, box_height_end),
             min_elevation=min_elevation,
             start_direction=start_direction,
             end_direction=end_direction,
             bottom_shift_meter=bottom_shift_meter,
             circular_arch=circular_arch,
-            arch_height_fraction=arch_height_fraction,
+            arch_height=arch_height
         )
 
         arches.append(arch)
@@ -704,7 +719,7 @@ def create_arches(
 
 def create_bridge(
     line3d_swiss,
-    deck_width=8.0,
+    deck_width_pair : str ="4.0,4.0",
     bottom_shift_percentage=0,
     min_elevation=0,
     arch_fractions=None,
@@ -712,7 +727,7 @@ def create_bridge(
     circular_arch=True,
     arch_height_fraction=0.8,
 ):
-    logger.debug(f"Create bridge with deck_width={deck_width}, min_elevation={min_elevation:.1f}, circular_arch={circular_arch}, arch_height_fraction={arch_height_fraction}")
+    logger.debug(f"Create bridge with deck_width={deck_width_pair}, min_elevation={min_elevation:.1f}, circular_arch={circular_arch}, arch_height_fraction={arch_height_fraction}")
     # Convert to list of coordinates if input is a shapely.LineString
     if isinstance(line3d_swiss, LineString):
         logger.debug(f"Received a line segment with {line3d_swiss.length:.1f} meters")
@@ -724,16 +739,26 @@ def create_bridge(
             raise ValueError("LineString must have Z coordinates")
         line3d_swiss = coords_2d
 
+    # parse deck_width which could be either a pair of floats or one number
+    def parse_deck_width_parameter(input_string: str) -> tuple[float, float]:
+        numbers = input_string.strip().split(',')
+        if len(numbers) == 1:
+            # Single number case: create (a/2, a/2)
+            a = float(numbers[0])
+            return (a/2, a/2)
+        else:
+            # Two number case: return (a, b)
+            return (float(numbers[0]), float(numbers[1]))
+    deck_width_pair = parse_deck_width_parameter(deck_width_pair)
+    deck_width = deck_width_pair[0] + deck_width_pair[1]
+    
     # Calculate bottom deck width based on the shift percentage
     bottom_deck_width = deck_width + (bottom_shift_percentage * deck_width)
-
-    # derived parameters
-    arch_width = max(deck_width, bottom_deck_width) * 3  # Width of the arch in meters
 
     # Create the bridge deck
     deck_mesh, coords, perp_vectors = create_bridge_deck(
         line_swiss=line3d_swiss,
-        deck_width=deck_width,
+        deck_width_pair=deck_width_pair,
         min_elevation=min_elevation,
         bottom_shift_percentage=bottom_shift_percentage,
     )
@@ -749,13 +774,13 @@ def create_bridge(
     # Create the arches
     arches = create_arches(
         line_swiss=line3d_swiss,
-        arch_width=arch_width,
+        deck_width=deck_width,
         min_elevation=min_elevation,
         arch_fractions=arch_fractions,
         arch_height_fraction=arch_height_fraction,
         pier_size_meters=pier_size_meters,
         bottom_shift_meter=bottom_shift_meter,
-        circular_arch=circular_arch,
+        circular_arch=circular_arch
     )
 
     # Add all arches to the scene
@@ -770,89 +795,141 @@ def create_bridge(
 
     return pv.wrap(bridge_mesh), footprint
 
-
 @click.command()
-@click.option("--deck-width", default=8.0, help="Width of the bridge deck in meters")
 @click.option(
-    "--bottom-shift-percentage",
-    default=0.0,
-    help="Percentage to increase/decrease the bottom width relative to the top width",
-)
-@click.option(
-    "--bridge-height",
-    default=65,
-    help="Height of the bridge in meter",
-)
-@click.option(
-    "--arch-fractions",
-    required=True,
-    help="Comma-separated list of fractions determining arch lengths (must sum to 1)",
-)
-@click.option("--pier-size", default=3, help="Size of gaps between arches in meters")
-@click.option(
-    "--circular-arch/--no-circular-arch",
-    default=True,
-    help="Use circular arches (True) or rectangular arches (False)",
-)
-@click.option(
-    "--arch-height-fraction",
-    default=0.8,
-    help="Fraction of bridge height to use for arch height (0.0-1.0)",
+    "--geojson",
+    type=click.Path(exists=False),
+    help="Path to GeoJSON file or '-' for STDIN",
 )
 def main(
-    deck_width,
-    bottom_shift_percentage,
-    bridge_height,
-    arch_fractions,
-    pier_size,
-    circular_arch,
-    arch_height_fraction,
+    geojson
 ):
-    # Parse the arch fractions from the string
-    fractions = [float(f) for f in arch_fractions.split(",")]
-    # Load GeoJSON data (example: Landwasserviadukt)
+    # Default GeoJSON string (Landwasserviadukt example)
     geojson_str = """
-{"features":[{"bbox":[9.675145,46.680561,9.676638,46.681012],"geometry":{"coordinates":[[9.675145,46.680978,1050.852],[9.675196,46.680988,1051.135],[9.675311,46.681003,1051.342],[9.675425,46.681011,1051.542],[9.675538,46.681012,1051.742],[9.675652,46.681005999999996,1051.943],[9.675765,46.680994,1052.143],[9.675875,46.680975,1052.343],[9.675983,46.680949,1052.545],[9.676087,46.680917,1052.745],[9.676186,46.68088,1052.945],[9.676281,46.680836,1053.145],[9.67637,46.680787,1053.345],[9.676452,46.680732,1053.546],[9.676527,46.680673,1053.746],[9.676594,46.68061,1053.946],[9.676638,46.680561,1054.095]],"type":"LineString"},"id":10440,"properties":{"achse_dkm":"Wahr","anschlussgleis":"Falsch","anzahl_spuren":"1","auf_strasse":"Falsch","ausser_betrieb":"Falsch","betriebsbahn":"Falsch","datum_aenderung":"2023-04-24","datum_erstellung":"2010-07-13","eroeffnungsdatum":null,"erstellung_jahr":2009,"erstellung_monat":8,"grund_aenderung":"Verbessert","herkunft":"swisstopo","herkunft_jahr":2022,"herkunft_monat":6,"id":10440,"kunstbaute":"Bruecke","museumsbahn":"Falsch","name":"Landwasserviadukt","objektart":"Schmalspur","revision_jahr":2022,"revision_monat":6,"revision_qualitaet":"Akt","standseilbahn":"Falsch","stufe":"1","tlm_oev_name_uuid":"{20E2723B-F0FF-462B-9FAA-556F26185936}","uuid":"{DBDFB80A-837C-41B4-8E27-871C4C2CCC64}","verkehrsmittel":"Bahn","zahnradbahn":"Falsch"},"type":"Feature"}],"type":"FeatureCollection"}
+{"features":[{"bbox":[9.675145,46.680561,9.676638,46.681012],"geometry":{"coordinates":[[9.675145,46.680978,1050.852],[9.675196,46.680988,1051.135],[9.675311,46.681003,1051.342],[9.675425,46.681011,1051.542],[9.675538,46.681012,1051.742],[9.675652,46.681005999999996,1051.943],[9.675765,46.680994,1052.143],[9.675875,46.680975,1052.343],[9.675983,46.680949,1052.545],[9.676087,46.680917,1052.745],[9.676186,46.68088,1052.945],[9.676281,46.680836,1053.145],[9.67637,46.680787,1053.345],[9.676452,46.680732,1053.546],[9.676527,46.680673,1053.746],[9.676594,46.68061,1053.946],[9.676638,46.680561,1054.095]],"type":"LineString"},"id":10408,"properties":{"achse_dkm":"Wahr","anschlussgleis":"Falsch","anzahl_spuren":"1","auf_strasse":"Falsch","ausser_betrieb":"Falsch","betriebsbahn":"Falsch","bp_arch_fractions":"0.166,0.166,0.166,0.166,0.166,0.166","bp_arch_height_fraction":0.85,"bp_bottom_shift_percentage":0.4,"bp_circular_arch":true,"bp_deck_width":"5","bp_pier_size":3,"bp_rowid":1,"datum_aenderung":"2023-04-24","datum_erstellung":"2010-07-13","eroeffnungsdatum":null,"erstellung_jahr":2009,"erstellung_monat":8,"grund_aenderung":"Verbessert","herkunft":"swisstopo","herkunft_jahr":2022,"herkunft_monat":6,"id":10408,"kunstbaute":"Bruecke","museumsbahn":"Falsch","name":"Landwasserviadukt","objektart":"Schmalspur","revision_jahr":2022,"revision_monat":6,"revision_qualitaet":"Akt","standseilbahn":"Falsch","stufe":"1","tlm_oev_name_uuid":"{20E2723B-F0FF-462B-9FAA-556F26185936}","uuid":"{DBDFB80A-837C-41B4-8E27-871C4C2CCC64}","verkehrsmittel":"Bahn","zahnradbahn":"Falsch"},"type":"Feature"}],"type":"FeatureCollection"}
     """
 
-    # example Zürich
-    #    geojson_str ="""{"features":[{"bbox":[8.523079,47.391335,8.523806,47.392085],"geometry":{"coordinates":[[8.523079,47.391335,404.655],[8.523176,47.391433,405.13],[8.523716,47.391987,406.916],[8.523806,47.392085,407.02]],"type":"LineString"},"id":47151,"properties":{"achse_dkm":"Wahr","anschlussgleis":"Falsch","anzahl_spuren":"1","auf_strasse":"Wahr","ausser_betrieb":"Falsch","betriebsbahn":"Falsch","datum_aenderung":"2020-04-23","datum_erstellung":"2011-12-05","eroeffnungsdatum":null,"erstellung_jahr":2010,"erstellung_monat":6,"grund_aenderung":"Verbessert","herkunft":"swisstopo","herkunft_jahr":2019,"herkunft_monat":6,"id":47151,"kunstbaute":"Bruecke","museumsbahn":"Falsch","name":null,"objektart":"Schmalspur","revision_jahr":2019,"revision_monat":6,"revision_qualitaet":"2020_Akt","standseilbahn":"Falsch","stufe":"1","tlm_oev_name_uuid":null,"uuid":"{5F4F8551-5799-467E-BF97-3D5E8211AB6D}","verkehrsmittel":"Tram","zahnradbahn":"Falsch"},"type":"Feature"}],"type":"FeatureCollection"}"""
-    data = json.loads(geojson_str)
-    coords = data["features"][0]["geometry"]["coordinates"]
+    # Load GeoJSON data from file, STDIN, or use default
+    if geojson:
+        if geojson == '-':
+            # Read from STDIN
+            import sys
+            geojson_str = sys.stdin.read()
+            logger.info("Reading GeoJSON from STDIN")
+        else:
+            # Read from file
+            with open(geojson, 'r') as f:
+                geojson_str = f.read()
+            logger.info(f"Reading GeoJSON from file: {geojson}")
+    else:
+        logger.info("Using default GeoJSON (Landwasserviadukt)")
 
-    # Set up coordinate transformation from WGS84 to Swiss CH1903+ (EPSG:2056)
-    transformer = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2056", always_xy=True)
+    try:
+        data = json.loads(geojson_str)
+    except json.decoder.JSONDecodeError:
+        logger.critical(f"Are you sure we have a GeoJSON here: '{geojson_str[0:25]} ...'?")
+        sys.exit(-1)
 
-    # Convert to Swiss coordinates (EPSG:2056)
-    swiss_coords = []
-    for point in coords:
-        lon, lat, elev = point
-        x, y = transformer.transform(lon, lat)
-        swiss_coords.append([x, y, elev])
 
-    # Create a 3D LineString from the points
-    line3d_swiss = LineString(
-        [(p[0], p[1], p[2]) for p in swiss_coords]
-    )  # 2D line for shapely operations
-    max_z = max(point[2] for p in swiss_coords)
-    min_elevation = max_z - bridge_height
+    match_zero_pair_pattern = r'^\s*(0(?:\.0+)?\s*,\s*0(?:\.0+)?|0(?:\.0+)?)\s*$'
+     
+    all_meshes=[]
+    for i, feature in enumerate(data["features"]):
+        # Check if bridge parameters are in the GeoJSON properties
+        properties = feature.get("properties", {})
 
-    bridge_mesh, footprint = create_bridge(
-        line3d_swiss,
-        deck_width=deck_width,
-        bottom_shift_percentage=bottom_shift_percentage,
-        min_elevation=min_elevation,
-        arch_fractions=fractions,
-        pier_size_meters=pier_size,
-        circular_arch=circular_arch,
-        arch_height_fraction=arch_height_fraction,
-    )
-    bridge_mesh.plot()
-    bridge_mesh.save("bridge.stl")
-    with open("bridge_footprint.geojson", "w") as f:
-        f.write(shapely.to_geojson(footprint))
+        uuid = properties.get("uuid", "Unknown UUID")
+        logger.info(f"Feature {i} ({uuid})")
+
+        coords = feature["geometry"]["coordinates"]
+
+        # Set up coordinate transformation from WGS84 to Swiss CH1903+ (EPSG:2056)
+        transformer = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2056", always_xy=True)
+
+        # Convert to Swiss coordinates (EPSG:2056)
+        swiss_coords = []
+        for point in coords:
+            lon, lat, elev = point
+            x, y = transformer.transform(lon, lat)
+            swiss_coords.append([x, y, elev])
+                
+        # Create a 3D LineString from the points
+        line3d_swiss = LineString(
+            [(p[0], p[1], p[2]) for p in swiss_coords]
+        )  # 2D line for shapely operations
+
+
+        anzahl_spuren = properties.get("anzahl_spuren", None)
+        objektart = properties.get("objektart", None)
+
+        logger.info(f"- anzahl_spuren={anzahl_spuren}, objektart={objektart}")
+        params_tuple = define_bridge_parameters(line3d_swiss.length,
+                                                anzahl_spuren=anzahl_spuren,
+                                                objektart=objektart)
+        deck_width, bottom_shift_percentage, arch_fractions, pier_size_meters, arch_height_fraction, circular_arch = params_tuple
+
+        
+        max_z = max(point[2] for p in swiss_coords)
+        min_elevation = get_min_height_swissalti_service(line3d_swiss) - 10
+        bridge_height = max_z - min_elevation
+        logger.info(f"- I found a min elevation of {min_elevation:.2f} [m], bridge height is {bridge_height:.2f} [m]")
+
+        # Override command line parameters with GeoJSON properties if they exist
+        if "bp_deck_width" in properties and properties.get("bp_deck_width", None) is not None:
+            deck_width = properties["bp_deck_width"]
+            logger.info(f"- Using deck width from GeoJSON: {deck_width}")
+
+        if "bp_bottom_shift_percentage" in properties and properties.get("bp_bottom_shift_percentage", None) is not None:
+            bottom_shift_percentage = float(properties["bp_bottom_shift_percentage"])
+            logger.info(f"- Using bottom shift percentage from GeoJSON: {bottom_shift_percentage}")
+
+        if "bp_arch_height_fraction" in properties and properties.get("bp_arch_height_fraction", None) is not None:
+            arch_height_fraction = float(properties["bp_arch_height_fraction"])
+            logger.info(f"- Using arch height fraction from GeoJSON: {arch_height_fraction}")
+
+        if "bp_pier_size" in properties and properties.get("bp_pier_size", None) is not None:
+            pier_size = float(properties["bp_pier_size"])
+            logger.info(f"- Using pier size from GeoJSON: {pier_size}")
+
+        if "bp_circular_arch" in properties and properties.get("bp_circular_arch", None) is not None:
+            circular_arch = bool(properties["bp_circular_arch"])
+            logger.info(f"- Using circular arch setting from GeoJSON: {circular_arch}")
+
+        if "bp_arch_fractions" in properties and properties.get("bp_arch_fractions", None) is not None:
+            arch_fractions = properties["bp_arch_fractions"]
+            logger.info(f"- Using arch fractions from GeoJSON: {arch_fractions}")
+        
+
+        logger.info(f"- Input Parameters: shapely_geom={line3d_swiss} (length = {line3d_swiss.length:.2f}, deck_width_pair={deck_width}, "
+                    f"bottom_shift_percentage={bottom_shift_percentage}, min_elevation={min_elevation}, "
+                    f"arch_fractions={arch_fractions}, pier_size_meters={pier_size_meters}, "
+                    f"circular_arch={circular_arch}, arch_height_fraction={arch_height_fraction}")
+        if not re.match(match_zero_pair_pattern, deck_width):
+            bridge_mesh, footprint = create_bridge(
+                line3d_swiss,
+                deck_width_pair=deck_width,
+                bottom_shift_percentage=bottom_shift_percentage,
+                min_elevation=min_elevation,
+                arch_fractions=arch_fractions,
+                pier_size_meters=pier_size_meters,
+                circular_arch=circular_arch,
+                arch_height_fraction=arch_height_fraction,
+            )
+            all_meshes.append(bridge_mesh)
+        else:
+            logger.warning(f"- I skip this bridge as deck_width is set to 0")
+        logger.info("Done")
+        
+    if len(all_meshes):
+        plotter = pv.Plotter()
+        for mesh in all_meshes:
+            plotter.add_mesh(mesh)
+        plotter.show()
+    else:
+        logger.critical("No bridges found to display")
+
 
 
 if __name__ == "__main__":
-    # uv run scripts/bridge_creation.py --no-circular-arch --arch-fractions "0.166,0.166,0.166,0.166,0.166,0.166" --pier-size 5 --bottom-shift-percentage 0.4 --bridge-height 65 --arch-height-fraction 0.8 --circular-arch
+    # python scripts/bridge_creation.py --no-circular-arch --arch-fractions "0.166,0.166,0.166,0.166,0.166,0.166" --pier-size 5 --bottom-shift-percentage 0.4 --bridge-height 65 --arch-height-fraction 0.8 --circular-arch
     main()

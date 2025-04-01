@@ -11,10 +11,23 @@ node_modules
 
 web/public/addresses*
 
-assets/
+*.bak
+
+assets/*.parquet
+assets/*.zip
+assets/data.sqlite
+assets/*.gdb
+assets/swissBUILDINGS*
 Attic
 
 # Virtual environments
 .venv
 .aider*
 .env
+/geomesh.log
+
+.vite
+web/public
+/.ipynb_checkpoints/
+/.attachments/
+/.jupyter_ystore.db

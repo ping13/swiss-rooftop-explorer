@@ -15,7 +15,7 @@ fi
 sqlite3 "$DB_NAME" <<EOF
 CREATE TABLE bridge_parameters (
     uuid TEXT PRIMARY KEY,
-    deck_width INTEGER,
+    deck_width TEXT,
     bottom_shift_percentage REAL,
     arch_fractions TEXT,
     pier_size INTEGER,

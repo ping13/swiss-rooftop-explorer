@@ -17,6 +17,8 @@ ifeq ($(shell test -z "$$INIT_SH_LOADED" && echo 1),1)
 $(error Please run "source init.sh" before running make)
 endif
 
+TOPOPRINT_HOME=$(HOME)/dev/topoprint-ch
+
 PARQUET_FILES = assets/swissBUILDINGS3D_3-0_1112-13_Building_solid/chunk_00.parquet\
 	        assets/swissBUILDINGS3D_3_0_Building_solid/chunk_00.parquet \
 		assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid/chunk_00.parquet \
@@ -25,7 +27,8 @@ PARQUET_FILES = assets/swissBUILDINGS3D_3-0_1112-13_Building_solid/chunk_00.parq
 PARQUET_FILES_2D := $(patsubst %/chunk_00.parquet,%_2d/chunk_00.parquet,$(PARQUET_FILES))
 
 
-SWISSTLM3D_URL = https://data.geo.admin.ch/ch.swisstopo.swisstlm3d/swisstlm3d_2024-03/swisstlm3d_2024-03_2056_5728.gpkg.zip
+#SWISSTLM3D_URL = https://data.geo.admin.ch/ch.swisstopo.swisstlm3d/swisstlm3d_2024-03/swisstlm3d_2024-03_2056_5728.gpkg.zip
+SWISSTLM3D_URL = https://data.geo.admin.ch/ch.swisstopo.swisstlm3d/swisstlm3d_2025-03/swisstlm3d_2025-03_2056_5728.gpkg.zip
 SWISSTLM3D_BASENAME = $(notdir $(SWISSTLM3D_URL))
 # adjust the absolute path of SWISSTLM3D_FILENAME to your liking
 SWISSTLM3D_FILENAME = $(HOME)/data/swisstopo/$(SWISSTLM3D_BASENAME)
@@ -39,14 +42,17 @@ assets/dependency_processing.png: Makefile
 
 download:	assets/data.sqlite assets/swissBUILDINGS3D_3_0.gdb/gdb assets/swissBUILDINGS3D_3-0_1112-13.gdb/gdb assets/data.sqlite $(SWISSTLM3D_FILENAME) ## download and unzip buildings, address data and TLM data (may take a while, large data)
 
-publish:	assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet  assets/railway_bridges.parquet assets/road_bridges.parquet assets/missing_buildings.parquet ## publish parquet files to the data dir
-	rsync -av --progress $(dir $(word 1, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
-	rsync -av --progress $(dir $(word 2, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
-	rsync -av --progress $(dir $(word 3, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
-	rsync -av --progress $(dir $(word 4, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
-	rsync -av --progress $(word 5, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
-	rsync -av --progress $(word 6, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
-	rsync -av --progress $(word 7, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
+publish_buildings:	assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet   assets/missing_buildings.parquet ## publish parquet files to the data dir
+	rsync -a --info=skip1,name0 --checksum  $(dir $(word 1, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -a --info=skip1,name0 --checksum  $(dir $(word 2, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -a --info=skip1,name0 --checksum  $(dir $(word 3, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -a --info=skip1,name0 --checksum  $(dir $(word 4, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -a --info=skip1,name0 --checksum  $(word 5, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
+
+publish_bridges: assets/railway_bridges.parquet assets/road_bridges.parquet ## publish parquet files for bridges
+	rsync -a --info=skip1,name0 --checksum  $(word 1, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -a --info=skip1,name0 --checksum  $(word 2, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
+
 
 # this downloads the latest address database and unzips to have access to the SQLite databae
 assets/data.sqlite:
@@ -130,11 +136,17 @@ assets/bridge_parameters.db: scripts/create_bridge_db.sh
 
 create_bridges: assets/road_bridges.parquet assets/railway_bridges.parquet ## create parametrized 3D bridges
 
-assets/railway_bridges.parquet: assets/railway_bridges.gpkg.zip scripts/create_bridges_3d.py assets/bridge_parameters.db
+create_bridges_for_topoprint:  ## create a bash script for topoprint
+	python scripts/create_topoprint_script_for_bridges.py > $(TOPOPRINT_HOME)/scripts/run_bridges.sh
+
+display_bridge_from_clipboard:   ## copy a selected bridge in QGIS (should be GeoJSON) and run this command to visualize the bridge in 3D (works on macOS)
+	pbpaste | python scripts/bridge_creation.py --geojson -
+
+assets/railway_bridges.parquet: assets/railway_bridges.gpkg.zip scripts/create_bridges_3d.py scripts/bridge_creation.py assets/bridge_parameters.db
 	@echo "Create railway bridges"
 	time python scripts/create_bridges_3d.py $< $@
 
-assets/road_bridges.parquet: assets/road_bridges.gpkg.zip scripts/create_bridges_3d.py assets/bridge_parameters.db
+assets/road_bridges.parquet: assets/road_bridges.gpkg.zip scripts/create_bridges_3d.py scripts/bridge_creation.py assets/bridge_parameters.db
 	@echo "Create road bridges"
 	time python scripts/create_bridges_3d.py $< $@
 
