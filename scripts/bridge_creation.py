@@ -717,6 +717,61 @@ def create_arches(
     return arches
 
 
+def extend_line_at_ends(coords, extensions):
+    """
+    Extend a 3D line at both ends by the specified distances.
+    
+    Args:
+        coords: Array of 3D coordinates defining the path
+        extensions: Tuple of (start_extension, end_extension) in meters
+    
+    Returns:
+        numpy.ndarray: Extended array of 3D coordinates
+    """
+    start_extension, end_extension = extensions
+    extended_coords = coords.copy()
+    
+    # Extend at the start if needed
+    if start_extension > 0:
+        # Get direction from first segment (reversed)
+        first_direction = coords[0] - coords[1]
+        # Normalize direction in XY plane
+        xy_length = np.linalg.norm(first_direction[:2])
+        if xy_length > 0:
+            first_direction = first_direction * (start_extension / xy_length)
+            # Create new start point
+            new_start = coords[0] + first_direction
+            # Ensure Z coordinate maintains the same slope
+            z_diff = coords[0][2] - coords[1][2]
+            xy_diff = np.linalg.norm(coords[0][:2] - coords[1][:2])
+            if xy_diff > 0:
+                z_slope = z_diff / xy_diff
+                new_start[2] = coords[0][2] + (z_slope * start_extension)
+            # Add to the beginning of the array
+            extended_coords = np.vstack([new_start, extended_coords])
+    
+    # Extend at the end if needed
+    if end_extension > 0:
+        # Get direction from last segment
+        last_direction = coords[-1] - coords[-2]
+        # Normalize direction in XY plane
+        xy_length = np.linalg.norm(last_direction[:2])
+        if xy_length > 0:
+            last_direction = last_direction * (end_extension / xy_length)
+            # Create new end point
+            new_end = coords[-1] + last_direction
+            # Ensure Z coordinate maintains the same slope
+            z_diff = coords[-1][2] - coords[-2][2]
+            xy_diff = np.linalg.norm(coords[-1][:2] - coords[-2][:2])
+            if xy_diff > 0:
+                z_slope = z_diff / xy_diff
+                new_end[2] = coords[-1][2] + (z_slope * end_extension)
+            # Add to the end of the array
+            extended_coords = np.vstack([extended_coords, new_end])
+    
+    return extended_coords
+
+
 def create_bridge(
     line3d_swiss,
     deck_width_pair : str ="4.0,4.0",
@@ -726,6 +781,9 @@ def create_bridge(
     pier_size_meters=10,
     circular_arch=True,
     arch_height_fraction=0.8,
+    end_extensions=None,  # New parameter: can be None or tuple of (start_extension, end_extension) in meters
+    auto_extend=True,     # New parameter to control automatic extension
+    extension_factor=1.0, # Factor to multiply deck width by for extensions
 ):
     logger.debug(f"Create bridge with deck_width={deck_width_pair}, min_elevation={min_elevation:.1f}, circular_arch={circular_arch}, arch_height_fraction={arch_height_fraction}")
     # Convert to list of coordinates if input is a shapely.LineString
@@ -755,9 +813,28 @@ def create_bridge(
     # Calculate bottom deck width based on the shift percentage
     bottom_deck_width = deck_width + (bottom_shift_percentage * deck_width)
 
-    # Create the bridge deck
+    # Calculate automatic extensions based on deck width if needed
+    if end_extensions is None and auto_extend:
+        # Use deck width multiplied by the factor as the extension length
+        extension_length = deck_width * extension_factor
+        end_extensions = (extension_length, extension_length)
+        logger.debug(f"Automatically extending bridge ends by {extension_length} meters (deck width {deck_width} × factor {extension_factor})")
+    elif end_extensions is None:
+        end_extensions = (0, 0)
+    
+    # Extract the original line coordinates
+    original_coords = np.array(line3d_swiss)
+    
+    # If we have extensions, extend the line at both ends
+    if end_extensions[0] > 0 or end_extensions[1] > 0:
+        extended_coords = extend_line_at_ends(original_coords, end_extensions)
+        logger.debug(f"Extended bridge by {end_extensions[0]} meters at start and {end_extensions[1]} meters at end")
+    else:
+        extended_coords = original_coords
+
+    # Create the bridge deck for the full extended line
     deck_mesh, coords, perp_vectors = create_bridge_deck(
-        line_swiss=line3d_swiss,
+        line_swiss=extended_coords,
         deck_width_pair=deck_width_pair,
         min_elevation=min_elevation,
         bottom_shift_percentage=bottom_shift_percentage,
@@ -771,9 +848,9 @@ def create_bridge(
     if arch_fractions is None:
         arch_fractions = [1.0]
 
-    # Create the arches
+    # Create the arches only for the original line section
     arches = create_arches(
-        line_swiss=line3d_swiss,
+        line_swiss=original_coords,  # Use original coordinates for arches
         deck_width=deck_width,
         min_elevation=min_elevation,
         arch_fractions=arch_fractions,
@@ -801,8 +878,35 @@ def create_bridge(
     type=click.Path(exists=False),
     help="Path to GeoJSON file or '-' for STDIN",
 )
+@click.option(
+    "--auto-extend/--no-auto-extend",
+    default=True,
+    help="Automatically extend bridge ends by deck width (default: True)",
+)
+@click.option(
+    "--extension-factor",
+    type=float,
+    default=1.0,
+    help="Factor to multiply deck width by for automatic extensions (default: 1.0)",
+)
+@click.option(
+    "--start-extension",
+    type=float,
+    default=None,
+    help="Length in meters to extend the bridge at the start (overrides auto-extend)",
+)
+@click.option(
+    "--end-extension",
+    type=float,
+    default=None,
+    help="Length in meters to extend the bridge at the end (overrides auto-extend)",
+)
 def main(
-    geojson
+    geojson,
+    auto_extend,
+    extension_factor,
+    start_extension,
+    end_extension
 ):
     # Default GeoJSON string (Landwasserviadukt example)
     geojson_str = """
@@ -907,6 +1011,43 @@ def main(
             else:
                 arch_fractions = None
             
+        # Handle extension parameters from GeoJSON
+        current_auto_extend = auto_extend
+        current_extension_factor = extension_factor
+        current_start_extension = start_extension
+        current_end_extension = end_extension
+        
+        if "bp_auto_extend" in properties and properties.get("bp_auto_extend", None) is not None:
+            current_auto_extend = bool(properties["bp_auto_extend"])
+            logger.info(f"- Using auto-extend setting from GeoJSON: {current_auto_extend}")
+            
+        if "bp_extension_factor" in properties and properties.get("bp_extension_factor", None) is not None:
+            current_extension_factor = float(properties["bp_extension_factor"])
+            logger.info(f"- Using extension factor from GeoJSON: {current_extension_factor}")
+            
+        if "bp_start_extension" in properties and properties.get("bp_start_extension", None) is not None:
+            current_start_extension = float(properties["bp_start_extension"])
+            logger.info(f"- Using start extension from GeoJSON: {current_start_extension}")
+            current_auto_extend = False  # Override auto-extend if explicit extension is provided
+            
+        if "bp_end_extension" in properties and properties.get("bp_end_extension", None) is not None:
+            current_end_extension = float(properties["bp_end_extension"])
+            logger.info(f"- Using end extension from GeoJSON: {current_end_extension}")
+            current_auto_extend = False  # Override auto-extend if explicit extension is provided
+        
+        # Determine end extensions
+        if current_start_extension is not None or current_end_extension is not None:
+            # Use provided values, defaulting to 0 if only one is provided
+            start_ext = current_start_extension if current_start_extension is not None else 0
+            end_ext = current_end_extension if current_end_extension is not None else 0
+            end_extensions = (start_ext, end_ext)
+            logger.info(f"- Using explicit extensions: start={start_ext}m, end={end_ext}m")
+        else:
+            end_extensions = None  # Let the function handle automatic calculation
+            if current_auto_extend:
+                logger.info(f"- Using automatic extensions with factor: {current_extension_factor}")
+            else:
+                logger.info(f"- No extensions will be applied")
 
         logger.info(f"- Input Parameters: shapely_geom={line3d_swiss} (length = {line3d_swiss.length:.2f}, deck_width_pair={deck_width}, "
                     f"bottom_shift_percentage={bottom_shift_percentage}, min_elevation={min_elevation}, "
@@ -922,6 +1063,9 @@ def main(
                 pier_size_meters=pier_size_meters,
                 circular_arch=circular_arch,
                 arch_height_fraction=arch_height_fraction,
+                end_extensions=end_extensions,
+                auto_extend=current_auto_extend,
+                extension_factor=current_extension_factor,
             )
             all_meshes.append(bridge_mesh)
         else:
