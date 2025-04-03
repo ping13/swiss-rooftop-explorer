@@ -896,9 +896,17 @@ def main(
             logger.info(f"- Using circular arch setting from GeoJSON: {circular_arch}")
 
         if "bp_arch_fractions" in properties and properties.get("bp_arch_fractions", None) is not None:
-            arch_fractions = properties["bp_arch_fractions"]
+            arch_fractions_str = properties["bp_arch_fractions"]
             logger.info(f"- Using arch fractions from GeoJSON: {arch_fractions}")
         
+            if arch_fractions_str and arch_fractions_str.strip():
+                try:
+                    arch_fractions = [float(x) for x in arch_fractions_str.split(',')]
+                except ValueError:
+                    arch_fractions = None
+            else:
+                arch_fractions = None
+            
 
         logger.info(f"- Input Parameters: shapely_geom={line3d_swiss} (length = {line3d_swiss.length:.2f}, deck_width_pair={deck_width}, "
                     f"bottom_shift_percentage={bottom_shift_percentage}, min_elevation={min_elevation}, "
