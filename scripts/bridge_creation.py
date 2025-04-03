@@ -781,9 +781,7 @@ def create_bridge(
     pier_size_meters=10,
     circular_arch=True,
     arch_height_fraction=0.8,
-    end_extensions=None,  # New parameter: can be None or tuple of (start_extension, end_extension) in meters
-    auto_extend=True,     # New parameter to control automatic extension
-    extension_factor=1.0, # Factor to multiply deck width by for extensions
+    auto_extend=True,     # Parameter to control automatic extension
 ):
     logger.debug(f"Create bridge with deck_width={deck_width_pair}, min_elevation={min_elevation:.1f}, circular_arch={circular_arch}, arch_height_fraction={arch_height_fraction}")
     # Convert to list of coordinates if input is a shapely.LineString
@@ -813,14 +811,12 @@ def create_bridge(
     # Calculate bottom deck width based on the shift percentage
     bottom_deck_width = deck_width + (bottom_shift_percentage * deck_width)
 
-    # Calculate automatic extensions based on deck width if needed
-    if end_extensions is None and auto_extend:
-        # Use deck width multiplied by the factor as the extension length
-        extension_length = deck_width * extension_factor
+    # Simplified extension logic - use deck_width as extension length if auto_extend is True
+    end_extensions = (0, 0)
+    if auto_extend:
+        extension_length = deck_width  # Fixed to deck_width
         end_extensions = (extension_length, extension_length)
-        logger.debug(f"Automatically extending bridge ends by {extension_length} meters (deck width {deck_width} × factor {extension_factor})")
-    elif end_extensions is None:
-        end_extensions = (0, 0)
+        logger.debug(f"Automatically extending bridge ends by {extension_length} meters (equal to deck width)")
     
     # Extract the original line coordinates
     original_coords = np.array(line3d_swiss)
@@ -883,30 +879,9 @@ def create_bridge(
     default=True,
     help="Automatically extend bridge ends by deck width (default: True)",
 )
-@click.option(
-    "--extension-factor",
-    type=float,
-    default=1.0,
-    help="Factor to multiply deck width by for automatic extensions (default: 1.0)",
-)
-@click.option(
-    "--start-extension",
-    type=float,
-    default=None,
-    help="Length in meters to extend the bridge at the start (overrides auto-extend)",
-)
-@click.option(
-    "--end-extension",
-    type=float,
-    default=None,
-    help="Length in meters to extend the bridge at the end (overrides auto-extend)",
-)
 def main(
     geojson,
-    auto_extend,
-    extension_factor,
-    start_extension,
-    end_extension
+    auto_extend
 ):
     # Default GeoJSON string (Landwasserviadukt example)
     geojson_str = """
@@ -1011,43 +986,17 @@ def main(
             else:
                 arch_fractions = None
             
-        # Handle extension parameters from GeoJSON
+        # Handle extension parameter from GeoJSON
         current_auto_extend = auto_extend
-        current_extension_factor = extension_factor
-        current_start_extension = start_extension
-        current_end_extension = end_extension
         
         if "bp_auto_extend" in properties and properties.get("bp_auto_extend", None) is not None:
             current_auto_extend = bool(properties["bp_auto_extend"])
             logger.info(f"- Using auto-extend setting from GeoJSON: {current_auto_extend}")
             
-        if "bp_extension_factor" in properties and properties.get("bp_extension_factor", None) is not None:
-            current_extension_factor = float(properties["bp_extension_factor"])
-            logger.info(f"- Using extension factor from GeoJSON: {current_extension_factor}")
-            
-        if "bp_start_extension" in properties and properties.get("bp_start_extension", None) is not None:
-            current_start_extension = float(properties["bp_start_extension"])
-            logger.info(f"- Using start extension from GeoJSON: {current_start_extension}")
-            current_auto_extend = False  # Override auto-extend if explicit extension is provided
-            
-        if "bp_end_extension" in properties and properties.get("bp_end_extension", None) is not None:
-            current_end_extension = float(properties["bp_end_extension"])
-            logger.info(f"- Using end extension from GeoJSON: {current_end_extension}")
-            current_auto_extend = False  # Override auto-extend if explicit extension is provided
-        
-        # Determine end extensions
-        if current_start_extension is not None or current_end_extension is not None:
-            # Use provided values, defaulting to 0 if only one is provided
-            start_ext = current_start_extension if current_start_extension is not None else 0
-            end_ext = current_end_extension if current_end_extension is not None else 0
-            end_extensions = (start_ext, end_ext)
-            logger.info(f"- Using explicit extensions: start={start_ext}m, end={end_ext}m")
+        if current_auto_extend:
+            logger.info(f"- Using automatic extensions (equal to deck width)")
         else:
-            end_extensions = None  # Let the function handle automatic calculation
-            if current_auto_extend:
-                logger.info(f"- Using automatic extensions with factor: {current_extension_factor}")
-            else:
-                logger.info(f"- No extensions will be applied")
+            logger.info(f"- No extensions will be applied")
 
         logger.info(f"- Input Parameters: shapely_geom={line3d_swiss} (length = {line3d_swiss.length:.2f}, deck_width_pair={deck_width}, "
                     f"bottom_shift_percentage={bottom_shift_percentage}, min_elevation={min_elevation}, "
@@ -1063,9 +1012,7 @@ def main(
                 pier_size_meters=pier_size_meters,
                 circular_arch=circular_arch,
                 arch_height_fraction=arch_height_fraction,
-                end_extensions=end_extensions,
                 auto_extend=current_auto_extend,
-                extension_factor=current_extension_factor,
             )
             all_meshes.append(bridge_mesh)
         else:
