@@ -42,12 +42,13 @@ assets/dependency_processing.png: Makefile
 
 download:	assets/data.sqlite assets/swissBUILDINGS3D_3_0.gdb/gdb assets/swissBUILDINGS3D_3-0_1112-13.gdb/gdb assets/data.sqlite $(SWISSTLM3D_FILENAME) ## download and unzip buildings, address data and TLM data (may take a while, large data)
 
-publish_buildings:	assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet   assets/missing_buildings.parquet ## publish parquet files to the data dir
+publish_buildings:	assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet   assets/missing_buildings.parquet assets/building_center_points.parquet ## publish parquet files to the data dir
 	rsync -a --info=skip1,name0 --checksum  $(dir $(word 1, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -a --info=skip1,name0 --checksum  $(dir $(word 2, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -a --info=skip1,name0 --checksum  $(dir $(word 3, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -a --info=skip1,name0 --checksum  $(dir $(word 4, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -a --info=skip1,name0 --checksum  $(word 5, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -a --info=skip1,name0 --checksum  $(word 6, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
 
 publish_bridges: assets/railway_bridges.parquet assets/road_bridges.parquet ## publish parquet files for bridges
 	rsync -a --info=skip1,name0 --checksum  $(word 1, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
@@ -94,8 +95,6 @@ web/public/addresses.parquet: scripts/addresses_sqlite2pq.py assets/data.sqlite
 
 ### ETL Buildings
 
-init: 				## initialize Python environment (conda)
-	source init.sh && mamba activate myenv
 
 create_buildings: $(PARQUET_FILES) $(PARQUET_FILES_2D) assets/missing_buildings_small.parquet assets/missing_buildings.parquet ## create building parquet files
 
@@ -122,6 +121,8 @@ assets/missing_buildings.parquet: assets/swissBUILDINGS3D_3_0_Building_solid_2d/
 	@echo "create missing buildings (like Letzigrund etc) from roofs. There are 2.5 mio buildings, but 3.2 mio roofs."
 	time python scripts/create_addl_buildings_from_roof.py --buildings-file $(word 1,$^) --roofs-file $(word 2,$^)  --output-file $@
 
+assets/building_center_points.parquet: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet scripts/create_center_points.py
+	time python scripts/create_center_points.py $< $@
 
 web/public/buildings.pmtiles: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet assets/railway_bridges.parquet assets/road_bridges.parquet assets/missing_buildings.parquet scripts/pq2pmtiles.sh
 	@echo "create the PM Tiles with buildings and bridges"
