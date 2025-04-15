@@ -23,7 +23,8 @@ def main():
     # Create a table with building data from the input file
     conn.execute(f"CREATE TABLE buildings AS SELECT * FROM read_parquet('{input_file}')")
     
-    # Calculate building centers and create a new table
+    # Calculate building centers and create a new table.
+    # Use only buildings with an area greater than 200sqm, the geometry is in buildings.boundary_2d. AI!
     conn.execute("""
     CREATE TABLE building_centers AS 
     SELECT 
