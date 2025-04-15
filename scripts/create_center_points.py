@@ -24,13 +24,15 @@ def main():
     conn.execute(f"CREATE TABLE buildings AS SELECT * FROM read_parquet('{input_file}')")
     
     # Calculate building centers and create a new table.
-    # Use only buildings with an area greater than 200sqm, the geometry is in buildings.boundary_2d. AI!
+    # Use only buildings with an area greater than 200sqm, the geometry is in buildings.boundary_2d.
     conn.execute("""
     CREATE TABLE building_centers AS 
     SELECT 
+    uuid,
     ((bbox['xmin'] + bbox['xmax']) / 2)::INTEGER AS x,
     ((bbox['ymin'] + bbox['ymax']) / 2)::INTEGER AS y
-    FROM buildings;
+    FROM buildings
+    WHERE ST_Area(boundary_2d) > 200;
     """)
     
     # Write to output parquet file
