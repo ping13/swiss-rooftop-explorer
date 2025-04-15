@@ -17,8 +17,10 @@ def main():
     
     print(f"Processing {input_file}...")
     
-    # Connect to DuckDB
+    # Connect to DuckDB and load spatial extension
     conn = duckdb.connect(':memory:')
+    conn.execute("INSTALL spatial")
+    conn.execute("LOAD spatial")
     
     # Create a table with building data from the input file
     conn.execute(f"CREATE TABLE buildings AS SELECT * FROM read_parquet('{input_file}')")
