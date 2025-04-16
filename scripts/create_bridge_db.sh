@@ -20,6 +20,7 @@ CREATE TABLE bridge_parameters (
     arch_fractions TEXT,
     pier_size INTEGER,
     circular_arch BOOLEAN,
-    arch_height_fraction REAL
+    arch_height_fraction REAL,
+    auto_extend BOOLEAN
 );
 EOF

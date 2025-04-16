@@ -689,7 +689,7 @@ def create_arches(
         average_bridge_height = avg_z - min_elevation
         box_height_start, box_height_end = (start_point[2] - min_elevation) * arch_height_fraction, \
             (end_point[2] - min_elevation) * arch_height_fraction
-        delta_deck_arch = 4 # min meter between deck and the arch, should be
+        delta_deck_arch = 2 # min meter between deck and the arch, should be
                             # based on the scale, let's assume 1:1000...
         arch_height = max(2, (average_bridge_height * (1- arch_height_fraction)) - delta_deck_arch)
         logger.debug(f"Arch height for arch {i}: {arch_height}")
@@ -765,7 +765,7 @@ def extend_line_at_ends(coords, extensions):
             xy_diff = np.linalg.norm(coords[-1][:2] - coords[-2][:2])
             if xy_diff > 0:
                 z_slope = z_diff / xy_diff
-                new_end[2] = coords[-1][2] + (z_slope * end_extension)
+                new_end[2] = coords[-1][2] - (z_slope * end_extension)
             # Add to the end of the array
             extended_coords = np.vstack([extended_coords, new_end])
     
@@ -945,7 +945,7 @@ def main(
         params_tuple = define_bridge_parameters(line3d_swiss.length,
                                                 anzahl_spuren=anzahl_spuren,
                                                 objektart=objektart)
-        deck_width, bottom_shift_percentage, arch_fractions, pier_size_meters, arch_height_fraction, circular_arch = params_tuple
+        deck_width, bottom_shift_percentage, arch_fractions, pier_size_meters, arch_height_fraction, circular_arch, auto_extend = params_tuple
 
         
         max_z = max(point[2] for p in swiss_coords)
@@ -974,6 +974,10 @@ def main(
             circular_arch = bool(properties["bp_circular_arch"])
             logger.info(f"- Using circular arch setting from GeoJSON: {circular_arch}")
 
+        if "bp_auto_extend" in properties and properties.get("bp_auto_extend", None) is not None:
+            auto_extend = bool(properties["bp_auto_extend"])
+            logger.info(f"- Using auto_extend setting from GeoJSON: {auto_extend}")
+            
         if "bp_arch_fractions" in properties and properties.get("bp_arch_fractions", None) is not None:
             arch_fractions_str = properties["bp_arch_fractions"]
             logger.info(f"- Using arch fractions from GeoJSON: {arch_fractions}")
@@ -988,11 +992,7 @@ def main(
             
         # Handle extension parameter from GeoJSON
         current_auto_extend = auto_extend
-        
-        if "bp_auto_extend" in properties and properties.get("bp_auto_extend", None) is not None:
-            current_auto_extend = bool(properties["bp_auto_extend"])
-            logger.info(f"- Using auto-extend setting from GeoJSON: {current_auto_extend}")
-            
+                    
         if current_auto_extend:
             logger.info(f"- Using automatic extensions (equal to deck width)")
         else:
@@ -1001,7 +1001,8 @@ def main(
         logger.info(f"- Input Parameters: shapely_geom={line3d_swiss} (length = {line3d_swiss.length:.2f}, deck_width_pair={deck_width}, "
                     f"bottom_shift_percentage={bottom_shift_percentage}, min_elevation={min_elevation}, "
                     f"arch_fractions={arch_fractions}, pier_size_meters={pier_size_meters}, "
-                    f"circular_arch={circular_arch}, arch_height_fraction={arch_height_fraction}")
+                    f"circular_arch={circular_arch}, arch_height_fraction={arch_height_fraction}, "
+                    f"auto_extend={auto_extend}")
         if not re.match(match_zero_pair_pattern, deck_width):
             bridge_mesh, footprint = create_bridge(
                 line3d_swiss,
@@ -1012,7 +1013,7 @@ def main(
                 pier_size_meters=pier_size_meters,
                 circular_arch=circular_arch,
                 arch_height_fraction=arch_height_fraction,
-                auto_extend=current_auto_extend,
+                auto_extend=auto_extend,
             )
             all_meshes.append(bridge_mesh)
         else:

@@ -155,7 +155,7 @@ def get_bridge_parameters_from_db(bridge_uuid, db_path="assets/bridge_parameters
         # Query for parameters for this specific bridge
         cursor.execute(
             "SELECT deck_width, bottom_shift_percentage, arch_fractions, pier_size, "
-            "circular_arch, arch_height_fraction FROM bridge_parameters WHERE uuid = ?", 
+            "circular_arch, arch_height_fraction, auto_extend FROM bridge_parameters WHERE uuid = ?", 
             (str(bridge_uuid),)
         )
         
@@ -179,7 +179,8 @@ def get_bridge_parameters_from_db(bridge_uuid, db_path="assets/bridge_parameters
                 'arch_fractions': arch_fractions,
                 'pier_size_meters': float(result[3]) if result[3] is not None else None,
                 'circular_arch': bool(result[4]) if result[4] is not None else None,
-                'arch_height_fraction': float(result[5]) if result[5] is not None else None
+                'arch_height_fraction': float(result[5]) if result[5] is not None else None,
+                'auto_extend': bool(result[6]) if result[6] is not None else None
             }
         return None
     except Exception as e:
@@ -245,62 +246,15 @@ def read_ogr_dataset(input_path):
 
                 ## create bridges,
                 ## - let's define some sensible default parameters
-                if False:
-                    default_railway_width = 8
-                    default_road_width = 3
-                    autobahn_width = 20
+                anzahl_spuren = feature.GetField("anzahl_spuren")  if "anzahl_spuren" in field_names else None
+                objektart = feature.GetField("objektart")  if "objektart" in field_names else None
 
-                    pier_size_meters = 3
+                params_tuple = define_bridge_parameters(length_3d,
+                                                        anzahl_spuren=anzahl_spuren,
+                                                        objektart=objektart)
 
-                    # - let's check feature attributes for some clues
-                    if "anzahl_spuren" in field_names: # Railway Bridges
-                        deck_width= str(default_railway_width * int(feature.GetField("anzahl_spuren")))
-                    elif "objektart" in field_names: # Road Bridges
-                        objektart = feature.GetField("objektart")
-                        match = re.search(r"(\d+)m\s.*", objektart)
-                        if match:
-                            deck_width = match.group(1)
-                            pier_size_meters = min(2, float(deck_width)/2)
-                            # some ad-hoc correction factor to take
-                            # real-world additional width into account
-                            deck_width = str(float(deck_width) * 3)                        
-                        else:
-                            if objektart == "Autobahn":
-                                deck_width = str(autobahn_width)
-                            else:
-                                deck_width = str(default_road_width)
-                    else:
-                        raise Exception(f"Cannot determine the width of the bridge deck for {attributes}")
+                deck_width, bottom_shift_percentage, arch_fractions, pier_size_meters, arch_height_fraction, circular_arch,auto_extend = params_tuple
 
-                    # we don't assume the piers to be larger at the bottom by default
-                    bottom_shift_percentage = 0
-
-
-                    # let's define arch_fractions and pier size based on the feature's length
-                    if length_3d < 20:
-                        arch_fractions = None
-                    elif length_3d < 50:
-                        n = 3 # TODO: define a better default valze of archs
-                        arch_fractions = [ 1/n ] * n
-                    elif length_3d < 100:
-                        n = 4 # TODO: define a better default valze of archs
-                        arch_fractions = [ 1/n ] * n
-                    else:
-                        n = 6 # TODO: define a better default valze of archs
-                        arch_fractions = [ 1/n ] * n
-
-                    # by default, archs are not circular and have a certain height
-                    circular_arch = False
-                    arch_height_fraction = 0.8
-                else:
-                    anzahl_spuren = feature.GetField("anzahl_spuren")  if "anzahl_spuren" in field_names else None
-                    objektart = feature.GetField("objektart")  if "objektart" in field_names else None
-
-                    params_tuple = define_bridge_parameters(length_3d,
-                                                            anzahl_spuren=anzahl_spuren,
-                                                            objektart=objektart)
-                    
-                    deck_width, bottom_shift_percentage, arch_fractions, pier_size_meters, arch_height_fraction, circular_arch = params_tuple
                 # Check if there are custom parameters in the database
                 bridge_uuid = feature.GetField("UUID")  # Use feature ID or index as fallback
                 assert bridge_uuid, "Undefined UUID for a bridge feature"
@@ -321,14 +275,17 @@ def read_ogr_dataset(input_path):
                         circular_arch = custom_params['circular_arch']
                     if custom_params['arch_height_fraction'] is not None:
                         arch_height_fraction = custom_params['arch_height_fraction']
+                    if custom_params['auto_extend'] is not None:
+                        auto_extend = custom_params['auto_extend']
                     logger.info("Custom parameters: deck_width={}, bottom_shift_percentage={}, arch_fractions={}, "
-                                 "pier_size_meters={}, circular_arch={}, arch_height_fraction={}".format(
+                                 "pier_size_meters={}, circular_arch={}, arch_height_fraction={}, auto_extend={}".format(
                                      custom_params['deck_width'], 
                                      custom_params['bottom_shift_percentage'], 
                                      custom_params['arch_fractions'], 
                                      custom_params['pier_size_meters'], 
                                      custom_params['circular_arch'], 
-                                     custom_params['arch_height_fraction']
+                                     custom_params['arch_height_fraction'],
+                                     custom_params['auto_extend'] 
                                 ))                        
                     # if deck_width is deliberately set to 0, we ignore this bridge feature
                     if re.match(match_zero_pair_pattern, deck_width):
@@ -348,6 +305,7 @@ def read_ogr_dataset(input_path):
                         pier_size_meters=pier_size_meters,
                         circular_arch=circular_arch,
                         arch_height_fraction=arch_height_fraction,
+                        auto_extend=auto_extend
                     )
                 except:
                     logger.critical(f"Parameters: shapely_geom={shapely_geom} (length = {length_3d:.2f}, deck_width_pair={deck_width}, "

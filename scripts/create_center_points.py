@@ -26,15 +26,22 @@ def main():
     conn.execute(f"CREATE TABLE buildings AS SELECT * FROM read_parquet('{input_file}')")
     
     # Calculate building centers and create a new table.
-    # Use only buildings with an area greater than 200sqm, the geometry is in buildings.boundary_2d.
+    # Use only the 50% largest buildings (measured by the length of the boundary)
     conn.execute("""
-    CREATE TABLE building_centers AS 
-    SELECT 
-    uuid,
-    ((bbox['xmin'] + bbox['xmax']) / 2)::INTEGER AS x,
-    ((bbox['ymin'] + bbox['ymax']) / 2)::INTEGER AS y
-    FROM buildings
-    WHERE ST_Area(boundary_2d) > 200;
+    CREATE TABLE building_centers AS
+    WITH lengths AS (
+      SELECT
+        ST_Length(boundary_2d) AS length,
+        ((bbox['xmin'] + bbox['xmax']) / 2)::INTEGER AS x,
+        ((bbox['ymin'] + bbox['ymax']) / 2)::INTEGER AS y
+        FROM buildings
+    ),
+    median_val AS (
+       SELECT median(length) AS median_length FROM lengths
+    )
+    SELECT x,y
+    FROM lengths, median_val
+    WHERE length > median_length;
     """)
     
     # Write to output parquet file

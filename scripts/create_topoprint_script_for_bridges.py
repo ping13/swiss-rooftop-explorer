@@ -20,16 +20,17 @@ formatter = logging.Formatter(
 
 # Add INFO level logging to console
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
+console_handler.setLevel(logging.DEBUG)
 console_handler.setFormatter(formatter)
 
 logger.addHandler(console_handler)
 logger.setLevel(logging.DEBUG)
 
 # Define tile size in mm
-tile_size_mm = 150
+tile_size_mm = 220
 min_buffer_distance = 24
-MAX_SCALE=2000
+MIN_SCALE=1200
+MAX_SCALE=3000
 
 # Create a helper function to round coordinates
 def round_coordinates(geometry, decimals=6):
@@ -118,6 +119,10 @@ for item in process_list:
             scale = int(max_dimension_meters / ((1/1000) * tile_size_mm)) + 10
             if scale > MAX_SCALE:
                 scale = MAX_SCALE
+            if scale < MIN_SCALE:
+                scale = MIN_SCALE
+            tile_size_mm =int( 1000*max_dimension_meters / (scale - 10) ) + 5
+            
             logger.debug(f"scale= 1:{scale}")
             logger.debug(f"tile_size_mm={tile_size_mm:.2f}")
 
@@ -148,10 +153,9 @@ for item in process_list:
             # Encode the compressed data in Base64
             base64_encoded = base64.b64encode(compressed).decode('utf-8')
 
-            # We already calculated the scale in the original coordinate system
-            
+            unique_name = feature_uuid.replace("{","").replace("}","")
             # Print the perimeter2stl.sh command with the base64 string
-            print(f'bash scripts/perimeter2stl.sh -u "bridge_{feature_uuid}" --scale {scale} --tile-size {tile_size_mm} --polygon {base64_encoded} --skip-web-view')
+            print(f'bash scripts/perimeter2stl.sh -u "bridge_{unique_name}" --scale {scale} --tile-size {tile_size_mm} --polygon {base64_encoded} -x "topoprint.ch" --skip-web-view')
 
     # Final cleanup
     layer = None

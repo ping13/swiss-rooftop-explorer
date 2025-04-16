@@ -83,6 +83,7 @@ def define_bridge_parameters(length_3d,
     bottom_shift_percentage=0
     arch_height_fraction=0.85
     circular_arch = False
+    auto_extend = True
     
     # - let's determine the deck width based on input parameters
     if anzahl_spuren is not None:  # Railway Bridges
@@ -105,15 +106,15 @@ def define_bridge_parameters(length_3d,
     # let's define arch_fractions based on the feature's length
     if length_3d < 20:
         arch_fractions = None
-    elif length_3d < 50:
+    elif length_3d < 100:
         n = 3  # TODO: define a better default value for arches
         arch_fractions = [1 / n] * n
-    elif length_3d < 100:
+    elif length_3d < 200:
         n = 4  # TODO: define a better default value for arches
         arch_fractions = [1 / n] * n
     else:
         n = 6  # TODO: define a better default value for arches
         arch_fractions = [1 / n] * n
 
-    return deck_width, bottom_shift_percentage, arch_fractions, pier_size_meters, arch_height_fraction, circular_arch
+    return deck_width, bottom_shift_percentage, arch_fractions, pier_size_meters, arch_height_fraction, circular_arch, auto_extend
         

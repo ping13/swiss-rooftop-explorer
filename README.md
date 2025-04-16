@@ -42,10 +42,11 @@ git clone https://github.com/ping13/swiss-rooftop-explorer
 
 ```bash
 brew install miniforge
-mamba init zsh ## adding mamba to .zshrc
 mamba create -n myenv 
-mamba activate myenv
-mamba install gdal geopandas pyarrow tqdm psutil libgdal-arrow-parquet
+source init.sh ## This includes activating the `myenv` environment
+mamba install gdal geopandas pyarrow tqdm psutil libgdal-arrow-parquet pyvista
+trimesh click httpx hishel rtree duckdb
+pip install manifold3d
 source init.sh
 ```
 
