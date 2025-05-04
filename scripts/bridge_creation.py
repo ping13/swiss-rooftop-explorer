@@ -730,45 +730,53 @@ def extend_line_at_ends(coords, extensions):
     """
     start_extension, end_extension = extensions
     extended_coords = coords.copy()
-    
+
+    # when I want to determine the linear direction of an end of the bridge, I
+    # want to be stable and use at least two indices, but if there are not more
+    # than 2 points in the array, we cannot do that
+    addl_index = 1
+    if len(coords) < 3:
+        addl_index = 0
+        
     # Extend at the start if needed
     if start_extension > 0:
-        # Get direction from first segment (reversed)
-        first_direction = coords[0] - coords[1]
+        # Get direction from first segment (try to use an additional index, see above)
+        first_direction = coords[0] - coords[1+addl_index]
         # Normalize direction in XY plane
         xy_length = np.linalg.norm(first_direction[:2])
-        if xy_length > 0:
-            first_direction = first_direction * (start_extension / xy_length)
-            # Create new start point
-            new_start = coords[0] + first_direction
-            # Ensure Z coordinate maintains the same slope
-            z_diff = coords[0][2] - coords[1][2]
-            xy_diff = np.linalg.norm(coords[0][:2] - coords[1][:2])
-            if xy_diff > 0:
-                z_slope = z_diff / xy_diff
-                new_start[2] = coords[0][2] + (z_slope * start_extension)
-            # Add to the beginning of the array
-            extended_coords = np.vstack([new_start, extended_coords])
-    
+        first_direction = first_direction * (start_extension / xy_length)
+        # Create new start point
+        new_start = coords[0] + first_direction
+        # Ensure Z coordinate maintains the same slope
+        z_diff = first_direction[2]
+        logger.info(f"z_diff {z_diff}")
+        xy_diff = np.linalg.norm(first_direction[:2])
+        z_slope = z_diff / xy_diff
+        new_start[2] = coords[0][2] + (z_slope * start_extension)
+        # Add to the beginning of the array
+        extended_coords = np.vstack([new_start, extended_coords])
+
     # Extend at the end if needed
     if end_extension > 0:
-        # Get direction from last segment
-        last_direction = coords[-1] - coords[-2]
+        # Get direction from last segment (try to use an additional index, see above)
+        last_direction = coords[-1] - coords[-2-addl_index]
         # Normalize direction in XY plane
         xy_length = np.linalg.norm(last_direction[:2])
-        if xy_length > 0:
-            last_direction = last_direction * (end_extension / xy_length)
-            # Create new end point
-            new_end = coords[-1] + last_direction
-            # Ensure Z coordinate maintains the same slope
-            z_diff = coords[-1][2] - coords[-2][2]
-            xy_diff = np.linalg.norm(coords[-1][:2] - coords[-2][:2])
-            if xy_diff > 0:
-                z_slope = z_diff / xy_diff
-                new_end[2] = coords[-1][2] - (z_slope * end_extension)
-            # Add to the end of the array
-            extended_coords = np.vstack([extended_coords, new_end])
-    
+
+        last_direction = last_direction * (end_extension / xy_length)
+        # Create new end point
+        new_end = coords[-1] + last_direction
+        
+        # Ensure Z coordinate maintains the same slope
+        z_diff = last_direction[2] #coords[-1][2] - coords[-2][2]
+        logger.info(f"z_diff {z_diff}")
+        xy_diff = np.linalg.norm(last_direction[:2]) #np.linalg.norm(coords[-1][:2] - coords[-2][:2])
+
+        z_slope = z_diff / xy_diff
+        new_end[2] = coords[-1][2] + (z_slope * end_extension)
+        # Add to the end of the array
+        extended_coords = np.vstack([extended_coords, new_end])
+        
     return extended_coords
 
 
@@ -817,7 +825,11 @@ def create_bridge(
         extension_length = deck_width  # Fixed to deck_width
         end_extensions = (extension_length, extension_length)
         logger.debug(f"Automatically extending bridge ends by {extension_length} meters (equal to deck width)")
-    
+    else:
+        extension_length = deck_width  # Fixed to deck_width
+        end_extensions = (2.5, 2.5)
+        logger.debug(f"Extending bridge only by {extension_length} meters (equal to deck width)")
+        
     # Extract the original line coordinates
     original_coords = np.array(line3d_swiss)
     
