@@ -749,7 +749,6 @@ def extend_line_at_ends(coords, extensions):
         new_start = coords[0] + first_direction
         # Ensure Z coordinate maintains the same slope
         z_diff = first_direction[2]
-        logger.info(f"z_diff {z_diff}")
         xy_diff = np.linalg.norm(first_direction[:2])
         z_slope = z_diff / xy_diff
         new_start[2] = coords[0][2] + (z_slope * start_extension)
@@ -769,7 +768,6 @@ def extend_line_at_ends(coords, extensions):
         
         # Ensure Z coordinate maintains the same slope
         z_diff = last_direction[2] #coords[-1][2] - coords[-2][2]
-        logger.info(f"z_diff {z_diff}")
         xy_diff = np.linalg.norm(last_direction[:2]) #np.linalg.norm(coords[-1][:2] - coords[-2][:2])
 
         z_slope = z_diff / xy_diff

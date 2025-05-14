@@ -50,9 +50,10 @@ publish_buildings:	assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_0
 	rsync -a --info=skip1,name0 --checksum  $(word 5, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -a --info=skip1,name0 --checksum  $(word 6, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
 
-publish_bridges: assets/railway_bridges.parquet assets/road_bridges.parquet ## publish parquet files for bridges
+publish_bridges: assets/railway_bridges.parquet assets/road_bridges.parquet assets/bridges_with_parameters.geojson ## publish parquet files for bridges
 	rsync -a --info=skip1,name0 --checksum  $(word 1, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -a --info=skip1,name0 --checksum  $(word 2, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -a --info=skip1,name0 --checksum  $(word 3, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
 
 
 # this downloads the latest address database and unzips to have access to the SQLite databae
@@ -160,8 +161,13 @@ assets/road_bridges.gpkg.zip: $(SWISSTLM3D_FILENAME)
 assets/railway_bridges.gpkg.zip: $(SWISSTLM3D_FILENAME)
 	echo "creating railway bridges, will take some time"
 	mkdir -p `dirname $@`
-	ogr2ogr -f GPKG $@ $(SWISSTLM3D_FILENAME) tlm_oev_eisenbahn -where "(kunstbaute = 'Bruecke' OR kunstbaute = 'Bruecke mit Galerie' OR kunstbaute = 'Gedeckte Bruecke') AND anzahl_spuren > 0 AND verkehrsmittel = 'Bahn'"
+	ogr2ogr -f GPKG $@ $(SWISSTLM3D_FILENAME) tlm_oev_eisenbahn -where "(kunstbaute = 'Bruecke' OR kunstbaute = 'Bruecke mit Galerie' OR kunstbaute = 'Gedeckte Bruecke') AND verkehrsmittel = 'Bahn'"
 
+
+assets/bridges_with_parameters.geojson: assets/road_bridges.gpkg.zip assets/bridge_parameters.db assets/railway_bridges.gpkg.zip scripts/create_bridges_kml.py
+	echo "create a dataset with all parametrized bridges"
+	mkdir -p `dirname $@`
+	python scripts/create_bridges_kml.py	
 
 ### Web
 devserver: 	   ## run the map server with PMTiles locally

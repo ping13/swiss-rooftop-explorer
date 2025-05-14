@@ -9,11 +9,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@duckdb/duckdb-wasm": "^1.28.1",
+    "@duckdb/duckdb-wasm": "^1.29.0",
     "maplibre-gl": "^3.6.2",
     "pmtiles": "^2.11.0"
   },
   "devDependencies": {
-    "vite": "^6.2.4"
+    "vite": "^6.3.5"
   }
 }

@@ -13,4 +13,5 @@ dependencies = [
     "pyarrow>=19.0.0",
     "shapely>=2.0.6",
     "tqdm>=4.67.1",
+    "trimesh>=4.6.8",
 ]
