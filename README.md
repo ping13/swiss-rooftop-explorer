@@ -102,16 +102,7 @@ Processes bridge data through multiple stages:
 ```bash
 make display_bridge_from_clipboard
 ```
-Visualizes a bridge in 3D from GeoJSON data copied to clipboard (useful for testing)
-
-```bash
-# This target is automatically included in the create_buildings process
-assets/missing_buildings.parquet
-```
-Identifies and processes buildings that might be missing in the original dataset:
-- Compares roof data with building footprints
-- Identifies roofs with low building coverage (below 30% by default)
-- Processes these as potential missing buildings
+Visualizes a bridge in 3D from GeoJSON data in the QGIS project copied to clipboard (useful for testing)
 
 ### 5. Map Tile Generation
 ```bash
@@ -181,10 +172,5 @@ make test_web
   - Shapely for geometric operations
 - Build System: Make
 
-## Known issues
-
-- Sometimes, the geometry of roofs may look weird when zoomed in.
-- The webmap may be hard to run on small machines
-- 3D bridge visualization requires sufficient GPU resources
 
 

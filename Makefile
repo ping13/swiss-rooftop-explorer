@@ -55,6 +55,9 @@ publish_bridges: assets/railway_bridges.parquet assets/road_bridges.parquet asse
 	rsync -a --info=skip1,name0 --checksum  $(word 2, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -a --info=skip1,name0 --checksum  $(word 3, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
 
+publish_routes: assets/railways.parquet assets/roads.parquet ## publish parquet files for roads and railways
+	rsync -a --info=skip1,name0 --checksum  $(word 1, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -a --info=skip1,name0 --checksum  $(word 2, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
 
 # this downloads the latest address database and unzips to have access to the SQLite databae
 assets/data.sqlite:
@@ -138,7 +141,7 @@ assets/bridge_parameters.db: scripts/create_bridge_db.sh
 
 create_bridges: assets/road_bridges.parquet assets/railway_bridges.parquet ## create parametrized 3D bridges
 
-create_bridges_for_topoprint:  ## create a bash script for topoprint
+create_bridges_for_topoprint:  ## create a bash script for topoprint for all digitized bridges
 	python scripts/create_topoprint_script_for_bridges.py > $(TOPOPRINT_HOME)/scripts/run_bridges.sh
 
 display_bridge_from_clipboard:   ## copy a selected bridge in QGIS (should be GeoJSON) and run this command to visualize the bridge in 3D (works on macOS)
@@ -152,11 +155,30 @@ assets/road_bridges.parquet: assets/road_bridges.gpkg.zip scripts/create_bridges
 	@echo "Create road bridges"
 	time python scripts/create_bridges_3d.py $< $@
 
+assets/roads.parquet: assets/roads.gpkg.zip
+	@echo "Create roads"
+	time python scripts/create_routes_3d.py $< $@
+
+assets/railways.parquet: assets/railways.gpkg.zip
+	@echo "Create Railways"
+	time python scripts/create_routes_3d.py $< $@
+
+assets/roads.gpkg.zip: $(SWISSTLM3D_FILENAME)
+	echo "creating roads without bridges, will take a couple of minutes"
+	mkdir -p `dirname $@`
+	time ogr2ogr -f GPKG $@ $(SWISSTLM3D_FILENAME) tlm_strassen_strasse \
+	  -where "kunstbaute != 'Bruecke' AND kunstbaute != 'Bruecke mit Galerie' AND kunstbaute != 'Gedeckte Bruecke'"
+
 assets/road_bridges.gpkg.zip: $(SWISSTLM3D_FILENAME)
 	echo "creating road bridges, will take some time"
 	mkdir -p `dirname $@`
 	ogr2ogr -f GPKG $@ $(SWISSTLM3D_FILENAME) tlm_strassen_strasse \
 	  -where "kunstbaute = 'Bruecke' OR kunstbaute = 'Bruecke mit Galerie' OR kunstbaute = 'Gedeckte Bruecke'"
+
+assets/railways.gpkg.zip: $(SWISSTLM3D_FILENAME)
+	echo "creating railways without bridges, will take a minute"
+	mkdir -p `dirname $@`
+	time ogr2ogr -f GPKG $@ $(SWISSTLM3D_FILENAME) tlm_oev_eisenbahn -where "(kunstbaute != 'Bruecke' AND kunstbaute != 'Bruecke mit Galerie' AND kunstbaute != 'Gedeckte Bruecke') AND verkehrsmittel = 'Bahn'"
 
 assets/railway_bridges.gpkg.zip: $(SWISSTLM3D_FILENAME)
 	echo "creating railway bridges, will take some time"
