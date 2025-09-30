@@ -24,15 +24,6 @@ def configure_logging(verbose: bool) -> None:
     logging.basicConfig(level=level, format="%(asctime)s %(levelname)s %(message)s")
 
 
-def infer_source_layer(path: str) -> str:
-    name = Path(path).name
-    if name.endswith(".zip"):
-        name = name[:-4]
-    if name.endswith(".gpkg"):
-        name = name[:-5]
-    return name
-
-
 def coerce_width(value: Any) -> Optional[float]:
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return None
@@ -94,14 +85,6 @@ def process_dataset(input_path: str, output_path: str) -> None:
 
     if gdf.empty:
         LOGGER.warning("No features found in %s", input_path)
-        gdf.to_parquet(
-            output_path,
-            index=False,
-            schema_version="1.1.0",
-            write_covering_bbox=True,
-            compression="snappy",
-        )
-        return
 
     gdf = gdf[~gdf.geometry.isna()].copy()
 
@@ -114,7 +97,6 @@ def process_dataset(input_path: str, output_path: str) -> None:
         gdf["objektart"] = pd.Series([None] * len(gdf), index=gdf.index)
 
     length_2d = gdf.geometry.length
-    gdf["length_2d_m"] = length_2d
 
     gdf["line_width_m"] = [
         determine_width(length, to_optional_int(spuren), objektart)
@@ -125,9 +107,8 @@ def process_dataset(input_path: str, output_path: str) -> None:
         )
     ]
 
-    gdf["geometry_blob"] = gdf.geometry.apply(lambda geom: geom.wkb if geom is not None else None)
-    gdf["source_layer"] = infer_source_layer(input_path)
-    gdf["crs_epsg"] = gdf.crs.to_epsg() if gdf.crs else None
+    geometry_column = gdf.geometry.name
+    gdf = gdf[[geometry_column, "line_width_m"]].copy()
 
     LOGGER.info("Writing %s features to %s", len(gdf), output_path)
     gdf.to_parquet(
