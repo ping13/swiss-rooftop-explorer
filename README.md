@@ -112,6 +112,13 @@ Generates PMTiles for web visualization:
 - `buildings.pmtiles`: Complete dataset including buildings, missing buildings, and bridges
 - `roofs-small.pmtiles`: Smaller test dataset
 
+### 6. Road & Railway Line Extraction
+```bash
+make roads
+make railways
+```
+Creates GeoParquet datasets via `scripts/create_routes_3d.py` containing the full 3D alignment for every TLM road and railway segment. Each record stores a WKB blob, inferred lane width, and flattened 2D length; downstream publishing is handled by `make publish_routes`.
+
 ## Development
 
 Start the development server:
@@ -129,6 +136,14 @@ Test production build:
 make test_web
 ```
 
+## Publishing & Sharing
+
+Use the Makefile targets to push generated datasets and the web build to the public host:
+- `make publish_buildings` uploads parquet outputs for building footprints and centers.
+- `make publish_bridges` syncs parametrized bridge assets (parquet + GeoJSON).
+- `make publish_routes` publishes the road and railway GeoParquet produced by `create_routes_3d.py`.
+- `make publish_web` deploys the Vite production build via `rsync`.
+
 
 ## Project Structure
 
@@ -142,6 +157,9 @@ make test_web
 │   ├── create_bridges_kml.py # Export bridges with parameters to KML/GeoJSON
 │   ├── create_addl_buildings_from_roof.py # Identify missing buildings from roof data
 │   ├── create_center_points.py # Create center points for buildings
+│   ├── create_routes_3d.py   # Convert TLM roads/railways into GeoParquet with width metadata
+│   ├── create_bridge_db.sh   # Seed the SQLite DB for bridge parameter overrides
+│   ├── create_topoprint_script_for_bridges.py # Generate helper scripts for TopoPrint exports
 │   └── pq2pmtiles.sh          # Convert Parquet to PMTiles format
 ├── web/                       # Web application
 │   ├── src/
@@ -171,6 +189,3 @@ make test_web
   - PyVista and Trimesh for 3D modeling and visualization
   - Shapely for geometric operations
 - Build System: Make
-
-
-

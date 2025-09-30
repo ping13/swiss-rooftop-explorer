@@ -155,11 +155,11 @@ assets/road_bridges.parquet: assets/road_bridges.gpkg.zip scripts/create_bridges
 	@echo "Create road bridges"
 	time python scripts/create_bridges_3d.py $< $@
 
-assets/roads.parquet: assets/roads.gpkg.zip
+assets/roads.parquet: assets/roads.gpkg.zip scripts/create_routes_3d.py
 	@echo "Create roads"
 	time python scripts/create_routes_3d.py $< $@
 
-assets/railways.parquet: assets/railways.gpkg.zip
+assets/railways.parquet: assets/railways.gpkg.zip scripts/create_routes_3d.py
 	@echo "Create Railways"
 	time python scripts/create_routes_3d.py $< $@
 
