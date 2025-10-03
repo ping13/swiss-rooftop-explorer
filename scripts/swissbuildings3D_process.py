@@ -10,8 +10,8 @@ import zlib
 import numpy as np
 import geopandas as gpd
 import pyogrio
-import dask_geopandas as dgpd
-from dask.distributed import Client
+#import dask_geopandas as dgpd
+#from dask.distributed import Client
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -62,6 +62,86 @@ def multipolygon_to_obj(geometry):
         return zlib.compress("".encode('utf-8'))
     
     return zlib.compress("\n".join(obj_lines).encode('utf-8'))
+
+
+def mesh_to_obj_text(mesh: pv.PolyData) -> str:
+    """Convert a PyVista mesh into an OBJ string (triangles only)."""
+    lines = []
+    pts = np.asarray(mesh.points)
+    for x, y, z in pts:
+        lines.append(f"v {x} {y} {z}")
+    # faces is a flat array: [3, i0, i1, i2, 3, j0, j1, j2, ...]
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+    i = 0
+    n = faces.size
+    while i < n:
+        count = int(faces[i])
+        if count == 3 and i + 3 < n:
+            i0 = int(faces[i+1]) + 1
+            i1 = int(faces[i+2]) + 1
+            i2 = int(faces[i+3]) + 1
+            lines.append(f"f {i0} {i1} {i2}")
+        i += count + 1
+    return "\n".join(lines)
+
+
+def multipolygon_to_watertight_obj(geometry):
+    """Build a watertight triangular-prism mesh for each triangular roof patch and export as compressed OBJ bytes."""
+    # Find a base elevation for this feature (lowest Z on any exterior vertex)
+    try:
+        min_z = min(pt[2] for poly in geometry.geoms for pt in list(poly.exterior.coords)[:-1])
+    except Exception as e:
+        print(f"*** Warning (min_z): {e}")
+        return zlib.compress("".encode("utf-8"))
+
+    feature_mesh = pv.PolyData()
+
+    for polygon in geometry.geoms:
+        exterior = polygon.exterior
+        # Dataset stores triangular patches: 4 coords with last equal to first
+        assert len(exterior.coords) == 4, f"Polygon exterior has {len(exterior.coords)} coordinates (not 4)"
+        assert exterior.coords[0] == exterior.coords[3], "Exterior is not closed"
+
+        ring = list(exterior.coords)[:-1]  # 3 unique vertices
+        # top triangle points
+        top_pts = [[x, y, z] for (x, y, z) in ring]
+        # bottom triangle points at min_z (same XY)
+        bot_pts = [[x, y, min_z] for (x, y, _) in ring]
+        pts = np.asarray(top_pts + bot_pts, dtype=np.float64)
+
+        # faces: top (0,1,2), bottom reversed (5,4,3), and walls around edges
+        faces = []
+        faces.append([3, 0, 1, 2])      # top
+        faces.append([3, 5, 4, 3])      # bottom (reverse winding)
+        edges = [(0, 1), (1, 2), (2, 0)]
+        for i0, i1 in edges:
+            b0, b1 = i0 + 3, i1 + 3
+            # two triangles per quad wall
+            faces.append([3, i0, i1, b1])
+            faces.append([3, i0, b1, b0])
+        faces = np.asarray(faces, dtype=np.int32).ravel()
+
+        poly = pv.PolyData(pts, faces).clean().triangulate()
+        if feature_mesh.n_points == 0:
+            feature_mesh = poly
+        else:
+            feature_mesh = feature_mesh.merge(poly)
+
+    # Weld close vertices and ensure triangulation
+    feature_mesh = feature_mesh.clean(point_merging=True, tolerance=1e-3).triangulate()
+
+    # Optional consistency checks (non-fatal in production)
+    try:
+        assert feature_mesh.n_points > 0
+        assert feature_mesh.is_all_triangles
+        # These are stricter; comment if input occasionally violates topology
+        assert feature_mesh.is_manifold
+        assert feature_mesh.n_open_edges == 0
+    except AssertionError:
+        pass
+
+    obj_text = mesh_to_obj_text(feature_mesh)
+    return zlib.compress(obj_text.encode("utf-8"))
 
 
 def multipolygon_to_mesh(geometry):
@@ -183,7 +263,7 @@ def process_file(file_path, output_path, bbox):
     print(f"Found {len(gdf)} rows")
 
     # Create 3D models
-    gdf['obj'] = gdf.geometry.apply(lambda geom: multipolygon_to_obj(geom)).astype('O')
+    gdf['obj'] = gdf.geometry.apply(lambda geom: multipolygon_to_watertight_obj(geom)).astype('O')
 
     # Create 2D boundary
     gdf.geometry = gdf.geometry.apply(lambda geom: shapely.ops.unary_union(geom))
@@ -213,7 +293,7 @@ def transform_2d(geom):
 
 def process_partition(gdf):
     # Create 3D models.
-    gdf['obj'] = gdf.geometry.apply(multipolygon_to_obj)
+    gdf['obj'] = gdf.geometry.apply(multipolygon_to_watertight_obj)
     # Simplify the geometry.
     gdf['geometry'] = gdf.geometry.apply(lambda geom: shapely.ops.unary_union(geom))
     # Create 2D boundary.
@@ -235,7 +315,7 @@ if __name__ == "__main__":
 #        2677982.4964,1243412.3961,2688871.6163,1251011.7174 # Zürich
 #        2678085.9586,1235544.0658,2692913.9194,1251073.7169 # Zürich + Meilen
 #        2691829,1236353,2691873,1236392 # Haltenweg Meilen
-        2474597,1043243,2876680,1294968 #Schweiz
+        2601455.1,1199547.2,2601734.7,1199750.8 # Test bbox (Zürich area)
     )
 
     # ddf = dgpd.read_parquet(os.path.join(pq_folder, 'chunk_*.parquet'))
@@ -270,7 +350,7 @@ if __name__ == "__main__":
     # create an obj column
     print(f"Create 3d models")
     gdf['obj'] = gdf.geometry.apply(
-        lambda geom: multipolygon_to_obj(geom),
+        lambda geom: multipolygon_to_watertight_obj(geom),
     ).astype('O')
 
     
