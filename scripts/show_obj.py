@@ -123,6 +123,21 @@ def extract_obj_from_blob(obj_blob):
     print("Failed to extract valid OBJ data after trying multiple decompression methods")
     return None
 
+def save_stl_from_obj_text(obj_data, stl_path):
+    """Export OBJ text to STL file using PyVista."""
+    with tempfile.NamedTemporaryFile(suffix='.obj', delete=False) as tmp:
+        tmp.write(obj_data.encode('utf-8'))
+        tmp_path = tmp.name
+    try:
+        mesh = pv.read(tmp_path)
+        mesh.save(stl_path)
+        print(f"STL saved to {stl_path}")
+    except Exception as e:
+        print(f"Error exporting STL: {e}")
+    finally:
+        os.unlink(tmp_path)
+
+
 def visualize_obj_with_pyvista(obj_data):
     """
     Visualize the OBJ 3D model using PyVista.
@@ -206,7 +221,7 @@ def get_buildings_stats(parquet_file):
     except Exception as e:
         print(f"Error getting dataset statistics: {e}")
 
-def main(parquet_file, x, y, proximity_threshold=10.0, show_stats=True):
+def main(parquet_file, x, y, proximity_threshold=10.0, show_stats=True, stl_out=None):
     """
     Main function to find a building at a location, extract its OBJ, and visualize it.
     """
@@ -242,7 +257,9 @@ def main(parquet_file, x, y, proximity_threshold=10.0, show_stats=True):
     f_count = obj_data.count("\nf ")
     print(f"OBJ file contains approximately {v_count} vertices and {f_count} faces")
     
-    # Visualize the 3D model with PyVista
+    # Optionally export STL, then visualize
+    if stl_out:
+        save_stl_from_obj_text(obj_data, stl_out)
     visualize_obj_with_pyvista(obj_data)
 
 if __name__ == "__main__":
@@ -254,7 +271,8 @@ if __name__ == "__main__":
     parser.add_argument('y', type=float, help='Y coordinate')
     parser.add_argument('--threshold', type=float, default=10.0, help='Maximum distance to search for buildings')
     parser.add_argument('--no-stats', action='store_true', help='Skip showing dataset statistics')
+    parser.add_argument('--stl-out', default=None, help='Optional path to save an STL export of the building mesh')
     
     args = parser.parse_args()
     
-    main(args.parquet_file, args.x, args.y, args.threshold, not args.no_stats)
+    main(args.parquet_file, args.x, args.y, args.threshold, not args.no_stats, args.stl_out)
