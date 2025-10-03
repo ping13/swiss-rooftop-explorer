@@ -68,7 +68,7 @@ def determine_width(length_m: float, anzahl_spuren: Optional[int], objektart: Op
     width = coerce_width(deck_width)
     if width is None and objektart:
         width = coerce_width(objektart)
-    return width
+    return width/2
 
 
 def resolve_path(input_path: str) -> str:
