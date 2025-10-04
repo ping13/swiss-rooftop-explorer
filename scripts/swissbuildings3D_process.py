@@ -17,14 +17,16 @@ import pyarrow.parquet as pq
 from shapely.geometry import LineString, MultiLineString
 
 from typing import Union, Optional
-
-
+from tqdm.auto import tqdm
+tqdm.pandas(desc="Building OBJ")
 
 # Convert to OBJ format
 def multipolygon_to_obj(geometry):
     obj_lines = []
     vertex_counter = 1  # OBJ vertex indices start at 1
 
+    if geometry is None:
+        return None 
     try:
         for polygon in geometry.geoms:
             assert len(polygon.exterior.coords) == 4, f"Polygon exterior has {len(polygon.exterior.coords)} coordinates (not 4, {list(polygon.exterior.coords)})"
@@ -149,6 +151,7 @@ if __name__ == "__main__":
     wt_group.add_argument("--no-watertight", dest="watertight", action="store_false", help="Use raw OBJ output (faster, not watertight) (default)")
     parser.set_defaults(watertight=False)
     parser.add_argument("--out", default=None, help="Output parquet file or folder (default: <input>_2d/chunk_00.parquet)")
+    parser.add_argument("--workers", type=int, default=8, help="Parallel workers for OBJ creation (default: 8)")
     args = parser.parse_args()
 
     pq_folder = args.input
@@ -175,9 +178,9 @@ if __name__ == "__main__":
         if args.limit is not None:
             read_kwargs["max_features"] = args.limit
         print("Reading with pyogrio.read_dataframe(...) ...")
-        gdf = pyogrio.read_dataframe(pq_folder, **read_kwargs)
+        gdf = pyogrio.read_dataframe(pq_folder, use_arrow=True, **read_kwargs)
     else:
-        print("Reading with geopandas.read_file(...) ...")
+        print("Reading with geopandas.read_parquet(...) ...")
         gdf = gpd.read_parquet(pq_folder, layer=args.layer) if args.layer else gpd.read_parquet(pq_folder)
 
     if bbox:
@@ -197,7 +200,15 @@ if __name__ == "__main__":
             builder = multipolygon_to_watertight_obj
         else:
             builder = multipolygon_to_obj
-        gdf['obj'] = gdf.geometry.apply(builder).astype('O')
+        # Parallelize OBJ creation using processes (default 8 workers)
+        from concurrent.futures import ProcessPoolExecutor
+        n_workers = max(1, int(args.workers))
+        geoms = list(gdf.geometry.values)
+        print(f"Building OBJ in parallel with {n_workers} workers")
+        with ProcessPoolExecutor(max_workers=n_workers) as ex:
+            objs = list(tqdm(ex.map(builder, geoms, chunksize=32),
+                             total=len(geoms), desc="Building OBJ (parallel)"))
+        gdf['obj'] = np.array(objs, dtype=object)
     else:
         print("Skipping 3D model creation (--skip-3d)")
 
@@ -212,7 +223,7 @@ if __name__ == "__main__":
         
     gdf.geometry = gdf.geometry.apply(simplify_multipolygon)
     # Remove the Z-dimension (if present) directly without looping
-    gdf['boundary_2d'] = gdf.geometry.apply(
+    gdf['boundary_2d'] = gdf.geometry.progress_apply(
         lambda geom: shapely.ops.transform(lambda x, y, z=None: (x, y), geom.boundary)
     )
 
