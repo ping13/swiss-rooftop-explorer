@@ -1,6 +1,11 @@
-# Swiss Rooftop Explorer
+# Swiss Rooftop Explorer + SwissTLM ETL pipeline
 
-A web application for exploring Swiss rooftops and addresses. 
+A web application for exploring Swiss rooftops and addresses and a processing
+pipeline for 
+
+- converting Swiss addresses to parquet files
+- converting some SwissTLM features to parquet files (buildings, bridges,
+roads). This is also used for [Topoprint](https://topoprint.ch).
 
 **[See it live in action](https://ping13.net/swiss-rooftop-explorer/)**
 
@@ -32,7 +37,7 @@ Read all about it in this [blog-post](https://blog.heuel.org/2025/02/swiss-roof-
 - Make
 - DuckDB
 - Tippecanoe (for PMTiles generation)
-- Conda/Mamba (for environment management)
+- `uv`
 
 ## Installation
 
@@ -41,17 +46,16 @@ Read all about it in this [blog-post](https://blog.heuel.org/2025/02/swiss-roof-
 git clone https://github.com/ping13/swiss-rooftop-explorer
 ```
 
-2. Install dependencies and initialize the conda environment, on a Mac:
-
-```bash
-brew install miniforge
-mamba create -n myenv 
-source init.sh ## This includes activating the `myenv` environment
-mamba install gdal geopandas pyarrow tqdm psutil libgdal-arrow-parquet pyvista
-trimesh click httpx hishel rtree duckdb
-pip install manifold3d
-source init.sh
+2. Install dependencies using `uv sync`. In case of macOS, I needed to make
+   sure that GDAL and arrow binaries are built against Homebrew's version
+   (which I use).
+   
 ```
+make align_with_homebrew
+```
+
+(Details see [this issue](https://github.com/apache/arrow/issues/44696#issuecomment-2900673878))
+
 
 3. Install frontend dependencies:
 ```bash
@@ -166,7 +170,6 @@ Use the Makefile targets to push generated datasets and the web build to the pub
 │   ├── public/
 │   └── package.json
 ├── Makefile                   # Build automation
-├── init.sh                    # Environment setup
 ├── assets/                   # Data assets
 │   └── bridge_parameters.db  # SQLite database for bridge customization
 └── pyproject.toml             # Python project configuration
