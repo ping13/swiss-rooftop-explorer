@@ -3,6 +3,7 @@ import sys
 import io
 import math
 import random
+import glob
 
 import shapely
 import zlib
@@ -18,6 +19,7 @@ from shapely.geometry import LineString, MultiLineString
 
 from typing import Union, Optional
 from tqdm.auto import tqdm
+
 tqdm.pandas(desc="Building OBJ")
 
 # Convert to OBJ format
@@ -26,7 +28,7 @@ def multipolygon_to_obj(geometry):
     vertex_counter = 1  # OBJ vertex indices start at 1
 
     if geometry is None:
-        return None 
+        return None
     try:
         for polygon in geometry.geoms:
             assert len(polygon.exterior.coords) == 4, f"Polygon exterior has {len(polygon.exterior.coords)} coordinates (not 4, {list(polygon.exterior.coords)})"
@@ -46,7 +48,7 @@ def multipolygon_to_obj(geometry):
     except AssertionError as e:
         print(f"*** Warning (to_obj): '{e}', return empty string")
         return zlib.compress("".encode('utf-8'))
-    
+
     return zlib.compress("\n".join(obj_lines).encode('utf-8'))
 
 
@@ -132,112 +134,136 @@ def multipolygon_to_watertight_obj(geometry):
 
 
 
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Process SwissBUILDINGS3D into watertight OBJ + 2D boundaries")
-    parser.add_argument("input", help="Path to source dataset (e.g., .gpkg, .gdb, or folder)")
-    parser.add_argument("--bbox", nargs=4, type=float,
-                        metavar=("XMIN","YMIN","XMAX","YMAX"),
-                        help="Bounding box in source CRS (LV95)")
-    parser.add_argument("--layer", default=None, help="OGR layer name (for GDB/GPKG)")
-    parser.add_argument("--engine", choices=["gdal","pyogrio"], default="gdal",
-                        help="Reader engine (pyogrio is faster/more memory-friendly)")
-    parser.add_argument("--limit", type=int, default=None, help="Max features to read (pyogrio only)")
-    parser.add_argument("--skip-3d", action="store_true", help="Skip OBJ creation to isolate read issues")
-    # Choose OBJ mode: watertight prisms (default) vs original raw triangles
-    wt_group = parser.add_mutually_exclusive_group()
-    wt_group.add_argument("--watertight", dest="watertight", action="store_true", help="Build watertight meshes")
-    wt_group.add_argument("--no-watertight", dest="watertight", action="store_false", help="Use raw OBJ output (faster, not watertight) (default)")
-    parser.set_defaults(watertight=False)
-    parser.add_argument("--out", default=None, help="Output parquet file or folder (default: <input>_2d/chunk_00.parquet)")
-    parser.add_argument("--workers", type=int, default=8, help="Parallel workers for OBJ creation (default: 8)")
-    args = parser.parse_args()
-
-    pq_folder = args.input
-
-    bbox = tuple(args.bbox) if args.bbox else (
-#        2689604.9543,1283305.8130,2690017.7198,1283705.6030 # Schaffhausen
-#        2677982.4964,1243412.3961,2688871.6163,1251011.7174 # Zürich
-#        2678085.9586,1235544.0658,2692913.9194,1251073.7169 # Zürich + Meilen
-#        2691829,1236353,2691873,1236392 # Haltenweg Meilen
-#        2601455.1,1199547.2,2601734.7,1199750.8  # default test bbox
-    )
-
-    print(f"Reader engine: {args.engine}")
-    print(f"Input: {pq_folder}")
-    print(f"BBox: {bbox}")
-    if args.layer:
-        print(f"Layer: {args.layer}")
-
-    # Read with selected engine
-    if args.engine == "pyogrio":
-        read_kwargs = dict(bbox=bbox)
-        if args.layer:
-            read_kwargs["layer"] = args.layer
-        if args.limit is not None:
-            read_kwargs["max_features"] = args.limit
-        print("Reading with pyogrio.read_dataframe(...) ...")
-        gdf = pyogrio.read_dataframe(pq_folder, use_arrow=True, **read_kwargs)
-    else:
-        print("Reading with geopandas.read_parquet(...) ...")
-        gdf = gpd.read_parquet(pq_folder, layer=args.layer) if args.layer else gpd.read_parquet(pq_folder)
-
-    if bbox:
-        gdf = gdf.cx[bbox[1]:bbox[3], bbox[0]:bbox[2]]  # clip using bounding box (xmin, ymin, xmax, ymax)
-        
-    print(f"Found {len(gdf)} rows")
-
-    # Add incrementing ID and remove UUID if it exists
-    gdf['id'] = range(1, len(gdf) + 1)  # Add incrementing ID starting from 1
+def process_chunk(gdf, build_watertight: bool, n_workers: int, next_id: int, skip_3d: bool):
+    # Assign IDs and drop UUID
+    gdf = gdf.copy()
+    gdf['id'] = range(next_id, next_id + len(gdf))
     if 'UUID' in gdf.columns:
         gdf = gdf.drop(columns=['UUID'])
 
     # Optionally create 3D OBJ column
-    if not args.skip_3d:
-        print(f"Create 3d models ({'watertight' if args.watertight else 'raw'})")
-        if args.watertight:
-            builder = multipolygon_to_watertight_obj
-        else:
-            builder = multipolygon_to_obj
-        # Parallelize OBJ creation using processes (default 8 workers)
+    if not skip_3d:
+        print(f"Create 3d models ({'watertight' if build_watertight else 'raw'}) for {len(gdf)} rows")
+        builder = multipolygon_to_watertight_obj if build_watertight else multipolygon_to_obj
         from concurrent.futures import ProcessPoolExecutor
-        n_workers = max(1, int(args.workers))
         geoms = list(gdf.geometry.values)
-        print(f"Building OBJ in parallel with {n_workers} workers")
-        with ProcessPoolExecutor(max_workers=n_workers) as ex:
-            objs = list(tqdm(ex.map(builder, geoms, chunksize=32),
-                             total=len(geoms), desc="Building OBJ (parallel)"))
+        with ProcessPoolExecutor(max_workers=max(1, int(n_workers))) as ex:
+            objs = list(tqdm(ex.map(builder, geoms, chunksize=32), total=len(geoms), desc="Building OBJ (parallel)"))
         gdf['obj'] = np.array(objs, dtype=object)
     else:
         print("Skipping 3D model creation (--skip-3d)")
 
     print("Create 2D boundary")
-    # simplify the multipolygon
     def simplify_multipolygon(x):
         try:
             return shapely.ops.unary_union(x)
         except shapely.errors.GEOSException as e:
             print(f"Skip geometry: {e}")
             return x
-        
+
     gdf.geometry = gdf.geometry.apply(simplify_multipolygon)
-    # Remove the Z-dimension (if present) directly without looping
     gdf['boundary_2d'] = gdf.geometry.progress_apply(
         lambda geom: shapely.ops.transform(lambda x, y, z=None: (x, y), geom.boundary)
     )
 
     print("Set new geometry")
-    del gdf['geometry'] 
+    del gdf['geometry']
     gdf.set_geometry("boundary_2d", inplace=True)
+    return gdf
 
-    out_folder = f"{pq_folder}_2d/"
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Process SwissBUILDINGS3D into watertight OBJ + 2D boundaries")
+    parser.add_argument("input", help="Path to source dataset (Parquet folder or file; GPKG/GDB ok for small runs)")
+    parser.add_argument("--bbox", nargs=4, type=float,
+                        metavar=("XMIN","YMIN","XMAX","YMAX"),
+                        help="Bounding box in source CRS (LV95)")
+    parser.add_argument("--layer", default=None, help="OGR layer name (for GDB/GPKG)")
+    parser.add_argument("--limit", type=int, default=None, help="Max features to read (single-file only)")
+    parser.add_argument("--skip-3d", action="store_true", help="Skip OBJ creation to isolate read issues")
+    wt_group = parser.add_mutually_exclusive_group()
+    wt_group.add_argument("--watertight", dest="watertight", action="store_true", help="Build watertight meshes")
+    wt_group.add_argument("--no-watertight", dest="watertight", action="store_false", help="Use raw OBJ output (faster, not watertight) (default)")
+    parser.set_defaults(watertight=False)
+    parser.add_argument("--out", default=None, help="Output folder (default: <input>_2d)")
+    parser.add_argument("--workers", type=int, default=8, help="Parallel workers for OBJ creation (default: 8)")
+    args = parser.parse_args()
+
+    src_path = args.input
+
+    bbox = tuple(args.bbox) if args.bbox else None
+
+    print(f"Input: {src_path}")
+    print(f"BBox: {bbox}")
+    if args.layer:
+        print(f"Layer: {args.layer}")
+
+    # Resolve input files (prefer chunked folder of Parquet files)
+    files = []
+    if os.path.isdir(src_path):
+        files = sorted(glob.glob(os.path.join(src_path, "*.parquet")))
+        if not files:
+            print(f"No parquet files found in folder: {src_path}")
+            sys.exit(1)
+    else:
+        files = [src_path]
+
+    # Output folder
+    out_folder = args.out or f"{src_path}_2d/"
     os.makedirs(out_folder, exist_ok=True)
-    output_file = args.out or os.path.join(out_folder, "chunk_00.parquet")
 
-    print(f"Export to parquet: {output_file}")
-    # write to parquet file and include covering_bbox for faster query
-    gdf.to_parquet(output_file, write_covering_bbox=True)
+    next_id = 1
+    total_rows = 0
 
-    print(gdf.info())
-        
+    print(f"Processing {len(files)} chunk(s) -> {out_folder}")
+    for i, fp in enumerate(tqdm(files, desc="Chunks")):
+        read_kwargs = {}
+        if bbox is not None:
+            read_kwargs["bbox"] = bbox
+        if args.layer and not fp.lower().endswith(".parquet"):
+            read_kwargs["layer"] = args.layer
+        if args.limit and len(files) == 1:
+            read_kwargs["max_features"] = args.limit
+
+        print(f"Reading {fp} with pyogrio.read_dataframe(...) ...")
+        gdf = pyogrio.read_dataframe(fp, use_arrow=True, **read_kwargs)
+        if gdf.empty:
+            print(f"Skip empty chunk: {fp}")
+            continue
+
+        # Extra bbox clip (safety) if provided and engine-level bbox was not effective
+        if bbox:
+            try:
+                gdf = gdf.cx[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+            except Exception:
+                pass
+        if gdf.empty:
+            print(f"Skip chunk (bbox filtered to empty): {fp}")
+            continue
+
+        print(f"Chunk rows: {len(gdf)}")
+        out_gdf = process_chunk(gdf, build_watertight=args.watertight, n_workers=args.workers, next_id=next_id, skip_3d=args.skip_3d)
+        next_id += len(out_gdf)
+        total_rows += len(out_gdf)
+
+        # Derive output filename
+        base = os.path.basename(fp)
+        if not base.lower().endswith('.parquet'):
+            base = f"chunk_{i:02d}.parquet"
+        out_path = os.path.join(out_folder, base)
+
+        print(f"Export to parquet: {out_path}")
+        # Write via GDAL/pyogrio Parquet driver with WKB + Snappy
+        pyogrio.write_dataframe(
+            out_gdf,
+            out_path,
+            driver="Parquet",
+            dataset_options={
+                "GEOMETRY_ENCODING": "WKB",
+                "PARQUET_COMPRESSION": "SNAPPY"
+            }
+        )
+
+    print(f"Done. Total rows written: {total_rows}")
