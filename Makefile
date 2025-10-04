@@ -13,9 +13,11 @@ help:		## output help for all targets
 		$(MAKEFILE_LIST)
 
 # Check if conda is initialized 
-ifeq ($(shell test -z "$$INIT_SH_LOADED" && echo 1),1)
-$(error Please run "source init.sh" before running make)
-endif
+#ifeq ($(shell test -z "$$INIT_SH_LOADED" && echo 1),1)
+#$(error Please run "source init.sh" before running make)
+#endif
+
+PYTHON_CMD = python
 
 TOPOPRINT_HOME=$(HOME)/dev/topoprint-ch
 
@@ -91,11 +93,11 @@ create_addresses: web/public/addresses_full.parquet web/public/addresses.parquet
 
 web/public/addresses_full.parquet: scripts/addresses_sqlite2pq.py assets/data.sqlite
 	mkdir -p web/public
-	time python scripts/addresses_sqlite2pq.py --full --sqlite-file assets/data.sqlite $@ 
+	time $(PYTHON_CMD) scripts/addresses_sqlite2pq.py --full --sqlite-file assets/data.sqlite $@ 
 
 web/public/addresses.parquet: scripts/addresses_sqlite2pq.py assets/data.sqlite
 	mkdir -p web/public
-	time python scripts/addresses_sqlite2pq.py --sqlite-file assets/data.sqlite $@ 
+	time $(PYTHON_CMD) scripts/addresses_sqlite2pq.py --sqlite-file assets/data.sqlite $@ 
 
 ### ETL Buildings
 
@@ -105,28 +107,32 @@ create_buildings: $(PARQUET_FILES) $(PARQUET_FILES_2D) assets/missing_buildings_
 pmtiles:  web/public/buildings.pmtiles 	## calculate building pmtiles for the web
 
 %_Roof_solid/chunk_00.parquet: %.gdb/gdb scripts/swissbuildings3D_gdb2pq.py
-	time python scripts/swissbuildings3D_gdb2pq.py $(patsubst %.gdb/gdb,%.gdb,$<) Roof_solid --chunk 100000
+	time $(PYTHON_CMD) scripts/swissbuildings3D_gdb2pq.py $(patsubst %.gdb/gdb,%.gdb,$<) Roof_solid --chunk 100000
+	$(PYTHON_CMD) scripts/make_parquet_metadata.py --schema-only $(dir $@)
 
 %_Roof_solid_2d/chunk_00.parquet: %_Roof_solid/chunk_00.parquet scripts/swissbuildings3D_process.py
 	@echo "Creating $@"
-	time python scripts/swissbuildings3D_process.py $(patsubst %/chunk_00.parquet,%,$<)
+	time $(PYTHON_CMD) scripts/swissbuildings3D_process.py $(patsubst %/chunk_00.parquet,%,$<)
+	$(PYTHON_CMD) scripts/make_parquet_metadata.py --schema-only $(dir $@)
 
 %_Building_solid/chunk_00.parquet: %.gdb/gdb scripts/swissbuildings3D_gdb2pq.py
-	time python scripts/swissbuildings3D_gdb2pq.py $(patsubst %.gdb/gdb,%.gdb,$<) Building_solid --chunk 100000
+	time $(PYTHON_CMD) scripts/swissbuildings3D_gdb2pq.py $(patsubst %.gdb/gdb,%.gdb,$<) Building_solid --chunk 100000
+	$(PYTHON_CMD) scripts/make_parquet_metadata.py --schema-only $(dir $@)
 
 %_Building_solid_2d/chunk_00.parquet: %_Building_solid/chunk_00.parquet scripts/swissbuildings3D_process.py
 	@echo "Creating $@"
-	python scripts/swissbuildings3D_process.py $(patsubst %/chunk_00.parquet,%,$<)
+	time $(PYTHON_CMD) scripts/swissbuildings3D_process.py $(patsubst %/chunk_00.parquet,%,$<)
+	$(PYTHON_CMD) scripts/make_parquet_metadata.py --schema-only $(dir $@)
 
 assets/missing_buildings_small.parquet: assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet scripts/create_addl_buildings_from_roof.py
-	time python scripts/create_addl_buildings_from_roof.py --buildings-file $(word 1,$^) --roofs-file $(word 2,$^)  --output-file $@
+	time $(PYTHON_CMD) scripts/create_addl_buildings_from_roof.py --buildings-file $(word 1,$^) --roofs-file $(word 2,$^)  --output-file $@
 
 assets/missing_buildings.parquet: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet scripts/create_addl_buildings_from_roof.py
 	@echo "create missing buildings (like Letzigrund etc) from roofs. There are 2.5 mio buildings, but 3.2 mio roofs."
-	time python scripts/create_addl_buildings_from_roof.py --buildings-file $(word 1,$^) --roofs-file $(word 2,$^)  --output-file $@
+	time $(PYTHON_CMD) scripts/create_addl_buildings_from_roof.py --buildings-file $(word 1,$^) --roofs-file $(word 2,$^)  --output-file $@
 
 assets/building_center_points.parquet: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet scripts/create_center_points.py
-	time python scripts/create_center_points.py $< $@
+	time $(PYTHON_CMD) scripts/create_center_points.py $< $@
 
 web/public/buildings.pmtiles: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet assets/railway_bridges.parquet assets/road_bridges.parquet assets/missing_buildings.parquet scripts/pq2pmtiles.sh
 	@echo "create the PM Tiles with buildings and bridges"
@@ -142,26 +148,26 @@ assets/bridge_parameters.db: scripts/create_bridge_db.sh
 create_bridges: assets/road_bridges.parquet assets/railway_bridges.parquet ## create parametrized 3D bridges
 
 create_bridges_for_topoprint:  ## create a bash script for topoprint for all digitized bridges
-	python scripts/create_topoprint_script_for_bridges.py > $(TOPOPRINT_HOME)/scripts/run_bridges.sh
+	$(PYTHON_CMD) scripts/create_topoprint_script_for_bridges.py > $(TOPOPRINT_HOME)/scripts/run_bridges.sh
 
 display_bridge_from_clipboard:   ## copy a selected bridge in QGIS (should be GeoJSON) and run this command to visualize the bridge in 3D (works on macOS)
-	pbpaste | python scripts/bridge_creation.py --geojson -
+	pbpaste | $(PYTHON_CMD) scripts/bridge_creation.py --geojson -
 
 assets/railway_bridges.parquet: assets/railway_bridges.gpkg.zip scripts/create_bridges_3d.py scripts/bridge_creation.py assets/bridge_parameters.db
 	@echo "Create railway bridges"
-	time python scripts/create_bridges_3d.py $< $@
+	time $(PYTHON_CMD) scripts/create_bridges_3d.py $< $@
 
 assets/road_bridges.parquet: assets/road_bridges.gpkg.zip scripts/create_bridges_3d.py scripts/bridge_creation.py assets/bridge_parameters.db
 	@echo "Create road bridges"
-	time python scripts/create_bridges_3d.py $< $@
+	time $(PYTHON_CMD) scripts/create_bridges_3d.py $< $@
 
 assets/roads.parquet: assets/roads.gpkg.zip scripts/create_routes_3d.py
 	@echo "Create roads"
-	time python scripts/create_routes_3d.py $< $@
+	time $(PYTHON_CMD) scripts/create_routes_3d.py $< $@
 
 assets/railways.parquet: assets/railways.gpkg.zip scripts/create_routes_3d.py
 	@echo "Create Railways"
-	time python scripts/create_routes_3d.py $< $@
+	time $(PYTHON_CMD) scripts/create_routes_3d.py $< $@
 
 assets/roads.gpkg.zip: $(SWISSTLM3D_FILENAME)
 	echo "creating roads without bridges, will take a couple of minutes"
@@ -189,7 +195,7 @@ assets/railway_bridges.gpkg.zip: $(SWISSTLM3D_FILENAME)
 assets/bridges_with_parameters.geojson: assets/road_bridges.gpkg.zip assets/bridge_parameters.db assets/railway_bridges.gpkg.zip scripts/create_bridges_kml.py
 	echo "create a dataset with all parametrized bridges"
 	mkdir -p `dirname $@`
-	python scripts/create_bridges_kml.py	
+	$(PYTHON_CMD) scripts/create_bridges_kml.py	
 
 ### Web
 devserver: 	   ## run the map server with PMTiles locally
