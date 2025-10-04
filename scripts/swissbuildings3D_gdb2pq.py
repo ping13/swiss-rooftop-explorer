@@ -1,4 +1,8 @@
 import argparse
+
+import pyarrow.parquet as pq
+import pyarrow as pa
+
 from osgeo import ogr
 import geopandas as gpd
 # import dask_geopandas as dgpd
@@ -16,8 +20,6 @@ from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Manager
 import queue
 
-import pyarrow.parquet as pq
-import pyarrow as pa
 import sys
 
 
@@ -167,12 +169,17 @@ def _process_ranges_worker(gdb_path, layer_name, assigned_ranges, worker_id, chu
                 if col != 'geometry':
                     chunk_gdf[col] = chunk_gdf[col].astype(pd.StringDtype())
 
+            # Write via GDAL/pyogrio Parquet driver with WKB + Snappy
+            import pyogrio
             chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_index:02d}.parquet")
-            chunk_gdf.to_parquet(
+            pyogrio.write_dataframe(
+                chunk_gdf,
                 chunk_path,
-                index=False,
-                schema_version='1.1.0',
-                compression='snappy'
+                driver="Parquet",
+                dataset_options={
+                    "GEOMETRY_ENCODING": "WKB",
+                    "PARQUET_COMPRESSION": "SNAPPY"
+                }
             )
             assert os.path.exists(chunk_path), f"Chunk {chunk_path} was not created, check for an internal bug"
             produced.append((chunk_index, chunk_path))
@@ -383,7 +390,7 @@ if __name__ == "__main__":
     parser.add_argument('gdb_path', type=str, help='Path to the FileGDB')
     parser.add_argument('layer_name', type=str, help='Name of the layer to process')
     parser.add_argument('--chunk-size', type=int, default=3000, help='Number of features per chunk')
-    parser.add_argument('--workers', type=int, default=4, help='Number of parallel workers')
+    parser.add_argument('--workers', type=int, default=6, help='Number of parallel workers')
     args = parser.parse_args()
 
     # Extract prefix from gdb path and create output paths

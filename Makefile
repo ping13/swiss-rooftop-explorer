@@ -12,12 +12,8 @@ help:		## output help for all targets
 		/^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}' \
 		$(MAKEFILE_LIST)
 
-# Check if conda is initialized 
-#ifeq ($(shell test -z "$$INIT_SH_LOADED" && echo 1),1)
-#$(error Please run "source init.sh" before running make)
-#endif
 
-PYTHON_CMD = python
+PYTHON_CMD = uv run python
 
 TOPOPRINT_HOME=$(HOME)/dev/topoprint-ch
 
@@ -34,6 +30,21 @@ SWISSTLM3D_URL = https://data.geo.admin.ch/ch.swisstopo.swisstlm3d/swisstlm3d_20
 SWISSTLM3D_BASENAME = $(notdir $(SWISSTLM3D_URL))
 # adjust the absolute path of SWISSTLM3D_FILENAME to your liking
 SWISSTLM3D_FILENAME = $(HOME)/data/swisstopo/$(SWISSTLM3D_BASENAME)
+
+align_with_homebrew:   ## for homebrew on Mac, we want to align with GDAL and arrow binaries
+	uv sync -U
+	@echo "Align pyogrio with the homebrew"
+	uv pip uninstall -y pyogrio
+	CMAKE_PREFIX_PATH="$(brew --prefix gdal)" uv pip install --no-binary=pyogrio pyogrio
+	@echo "Align pyarrow with homebrew"
+	ARV=$(brew info --json apache-arrow | jq -r '.[0].versions.stable') \
+	  AH=$(brew --prefix apache-arrow) && \
+	  uv pip uninstall -y pyarrow && \
+	  PKG_CONFIG_PATH="$AH/lib/pkgconfig" \
+	  CMAKE_PREFIX_PATH="$AH" \
+	  ARROW_HOME="$AH" \
+	  uv pip install --no-binary=pyarrow "pyarrow==$ARV"
+
 
 ### ETL
 
