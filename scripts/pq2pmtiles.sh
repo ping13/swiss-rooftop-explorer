@@ -13,7 +13,7 @@ load spatial;
 COPY ( 
     SELECT
         'Feature' AS type,
-        st_asgeojson(ST_FlipCoordinates(ST_Transform(boundary_2d, 'EPSG:2056', 'EPSG:4326'))) AS geometry,
+        st_asgeojson(ST_FlipCoordinates(ST_Transform(geometry, 'EPSG:2056', 'EPSG:4326'))) AS geometry,
         json_object(
             'roof_max', DACH_MAX,
             'roof_min', DACH_MIN,

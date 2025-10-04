@@ -148,7 +148,7 @@ assets/building_center_points.parquet: assets/swissBUILDINGS3D_3_0_Building_soli
 web/public/buildings.pmtiles: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet assets/railway_bridges.parquet assets/road_bridges.parquet assets/missing_buildings.parquet scripts/pq2pmtiles.sh
 	@echo "create the PM Tiles with buildings and bridges"
 	mkdir -p web/public/
-	time bash scripts/pq2pmtiles.sh $(word 1, $^) $(word 2, $^) $(word 3, $^) $(word 4, $^) $@
+	time bash scripts/pq2pmtiles.sh $(dir $(word 1, $^)) $(word 2, $^) $(word 3, $^) $(word 4, $^) $@
 
 ### ETL Road and Railway Bridges - TLM
 
