@@ -31,7 +31,7 @@ SWISSTLM3D_BASENAME = $(notdir $(SWISSTLM3D_URL))
 # adjust the absolute path of SWISSTLM3D_FILENAME to your liking
 SWISSTLM3D_FILENAME = $(HOME)/data/swisstopo/$(SWISSTLM3D_BASENAME)
 
-align_with_homebrew:   ## for homebrew on Mac, we want to align with GDAL and arrow binaries
+align_with_homebrew:   ## for homebrew on Mac, we want to align pyogrio and pyarrow with the brewed GDAL and arrow binaries
 	uv sync -U
 	@echo "Align pyogrio with the homebrew"
 	uv pip uninstall -y pyogrio
