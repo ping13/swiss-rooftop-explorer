@@ -1,5 +1,6 @@
 import os
 import click
+import pandas as pd
 import geopandas as gpd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -134,14 +135,18 @@ def main(buildings_file, roofs_file, output_file, out_2d, out_obj, overwrite, co
 
     # Normalize & validate obj for sidecar
     if 'obj' in selected.columns:
-        selected['obj'] = normalize_obj_to_bytes(selected['obj'])
-        validate_obj_binary_column(selected['obj'], 'obj')
+        selected['obj'] = selected['obj']
     else:
         # Create empty obj column if missing
         selected['obj'] = None
 
     # Prepare outputs
     print(f"write outputs: 2D -> {out_2d}, OBJ -> {out_obj}")
+
+    # 1) Write 2D file (drop obj)
+    out_2d_gdf = selected
+    # write via GDAL/pyogrio to avoid pyarrow filesystem issues
+    pyogrio.write_dataframe(out_2d_gdf, out_2d, driver='Parquet')
 
     # 2) Write OBJ sidecar with bbox struct via PyArrow
     if len(selected) == 0:
@@ -153,14 +158,24 @@ def main(buildings_file, roofs_file, output_file, out_2d, out_obj, overwrite, co
             names=["xmin", "ymin", "xmax", "ymax"]
         )
     else:
+        roofs_obj_file = roofs_file.replace("_2d", "_obj")
+        print(f"read roofs {roofs_obj_file}")
+        roofs_obj = pd.read_parquet(roofs_obj_file)
         id_arr = pa.array(selected['id'].tolist(), type=pa.int64())
-        obj_arr = pa.array(selected['obj'].tolist(), type=pa.binary())
+        # Align OBJ bytes from roofs sidecar to the selected IDs (preserve order)
+        # Ensure consistent id dtype and drop duplicate ids if present
+        try:
+            roofs_obj['id'] = roofs_obj['id'].astype('int64')
+        except Exception:
+            pass
+        if 'id' in roofs_obj.columns and roofs_obj['id'].duplicated().any():
+            roofs_obj = roofs_obj.drop_duplicates(subset=['id'], keep='first')
+        # Left-join to preserve order of selected
+        merged = selected[['id']].merge(roofs_obj[['id', 'obj']], on='id', how='left')
+        obj_series = normalize_obj_to_bytes(merged['obj'])
+        validate_obj_binary_column(obj_series, 'obj')
+        obj_arr = pa.array(obj_series.tolist(), type=pa.binary())
         bbox_arr = build_bbox_struct_from_gdf(selected)
-
-    # 1) Write 2D file (drop obj)
-    out_2d_gdf = selected.drop(columns=['obj'], errors='ignore')
-    # write via GDAL/pyogrio to avoid pyarrow filesystem issues
-    pyogrio.write_dataframe(out_2d_gdf, out_2d, driver='Parquet')
 
         
     table = pa.Table.from_arrays([id_arr, obj_arr, bbox_arr], names=['id', 'obj', 'bbox'])
