@@ -49,7 +49,9 @@ def multipolygon_to_obj(geometry):
         print(f"*** Warning (to_obj): '{e}', return empty string")
         return zlib.compress("".encode('utf-8'))
 
-    return zlib.compress("\n".join(obj_lines).encode('utf-8'))
+    obj = zlib.compress("\n".join(obj_lines).encode('utf-8'))
+    assert isinstance(obj, bytes), "compressed OBJ is not bytes"
+    return obj
 
 
 def mesh_to_obj_text(mesh) -> str:
@@ -143,13 +145,18 @@ def process_chunk(gdf, build_watertight: bool, n_workers: int, next_id: int, ski
 
     # Optionally create 3D OBJ column
     if not skip_3d:
-        print(f"Create 3d models ({'watertight' if build_watertight else 'raw'}) for {len(gdf)} rows")
-        builder = multipolygon_to_watertight_obj if build_watertight else multipolygon_to_obj
-        from concurrent.futures import ProcessPoolExecutor
-        geoms = list(gdf.geometry.values)
-        with ProcessPoolExecutor(max_workers=max(1, int(n_workers))) as ex:
-            objs = list(tqdm(ex.map(builder, geoms, chunksize=32), total=len(geoms), desc="Building OBJ (parallel)"))
-        gdf['obj'] = np.array(objs, dtype=object)
+        if build_watertight:
+            print(f"Create watertight 3d models")
+            builder = multipolygon_to_watertight_obj 
+        else: 
+            print(f"Create simple 3d models")
+            builder = multipolygon_to_obj
+
+        # 
+        gdf['obj'] = gdf.geometry.progress_apply(
+            lambda geom: builder(geom),
+        ).astype('O')
+        assert gdf["obj"].map(lambda x: isinstance(x, (bytes, type(None)))).all()
     else:
         print("Skipping 3D model creation (--skip-3d)")
 
@@ -160,7 +167,7 @@ def process_chunk(gdf, build_watertight: bool, n_workers: int, next_id: int, ski
         except shapely.errors.GEOSException as e:
             print(f"Skip geometry: {e}")
             return x
-
+        
     gdf.geometry = gdf.geometry.apply(simplify_multipolygon)
     gdf['boundary_2d'] = gdf.geometry.progress_apply(
         lambda geom: shapely.ops.transform(lambda x, y, z=None: (x, y), geom.boundary)
