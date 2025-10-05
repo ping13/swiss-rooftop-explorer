@@ -2,10 +2,33 @@ import duckdb
 import gzip
 import zlib
 import tempfile
-import os
-import sys
-import numpy as np
 import pyvista as pv
+
+def find_all_nearby_buildings(parquet_file, x, y, proximity_threshold=10.0):
+    print(f"Connecting to DuckDB and searching for buildings near ({x}, {y})...")
+    
+    # Connect to DuckDB
+    con = duckdb.connect(database=':memory:')
+    
+    # Load spatial extension
+    con.execute("INSTALL spatial; LOAD spatial;")
+    
+    xmin = x - proximity_threshold
+    xmax = x + proximity_threshold
+    ymin = y - proximity_threshold
+    ymax = y + proximity_threshold
+    
+    # Query to find the closest building
+    query = f"""
+    SELECT obj
+    FROM read_parquet('{parquet_file}')
+        WHERE bbox.xmax  >= {xmin}  -- Right of bbox must be at least at the left boundary
+           AND bbox.xmin <= {xmax}  -- Left of bbox must be at most at the right boundary
+           AND bbox.ymax >= {ymin}  -- Top of bbox must be at least at the bottom boundary
+           AND bbox.ymin <= {ymax}; -- Bottom of bbox must be at most at the top boundary
+    """
+    result = [r[0] for r in con.execute(query).fetchall()]
+    return result
 
 def find_building_at_location(parquet_file, x, y, proximity_threshold=10.0):
     """
@@ -121,54 +144,7 @@ def extract_obj_from_blob(obj_blob):
     print(f"Failed to extract valid OBJ data after trying multiple decompression methods for {type(obj_blob)}: {obj_blob}")
     return None
 
-def save_stl_from_obj_text(obj_data, stl_path):
-    """Export OBJ text to STL file using PyVista."""
-    with tempfile.NamedTemporaryFile(suffix='.obj', delete=False) as tmp:
-        tmp.write(obj_data.encode('utf-8'))
-        tmp_path = tmp.name
-    try:
-        mesh = pv.read(tmp_path)
-        mesh.save(stl_path)
-        print(f"STL saved to {stl_path}")
-    except Exception as e:
-        print(f"Error exporting STL: {e}")
-    finally:
-        os.unlink(tmp_path)
 
-
-def visualize_obj_with_pyvista(obj_data):
-    """
-    Visualize the OBJ 3D model using PyVista.
-    """
-    # Write the OBJ data to a temporary file
-    with tempfile.NamedTemporaryFile(suffix='.obj', delete=False) as tmp:
-        tmp.write(obj_data.encode('utf-8'))
-        tmp_path = tmp.name
-    
-    try:
-        print("Visualizing with PyVista...")
-        
-        # Load the mesh with PyVista
-        mesh = pv.read(tmp_path)
-        
-        # Set up the plotter
-        plotter = pv.Plotter()
-        plotter.add_mesh(mesh, color='lightgray', show_edges=True)
-        plotter.show_axes()
-        
-        # Add some basic information to the visualization
-        v_count = obj_data.count("\nv ")
-        f_count = obj_data.count("\nf ")
-        plotter.add_text(f"Vertices: {v_count}, Faces: {f_count}", position="upper_left", font_size=12)
-        
-        # Show the plot
-        plotter.show()
-        
-    except Exception as e:
-        print(f"Error visualizing with PyVista: {e}")
-    finally:
-        # Clean up the temporary file
-        os.unlink(tmp_path)
 
 def get_buildings_stats(parquet_file):
     """
@@ -219,7 +195,7 @@ def get_buildings_stats(parquet_file):
     except Exception as e:
         print(f"Error getting dataset statistics: {e}")
 
-def main(parquet_file, x, y, proximity_threshold=10.0, show_stats=True, stl_out=None):
+def main(parquet_file, x, y, proximity_threshold=10.0, show_stats=True, stl_out=None, with_roofs=False):
     """
     Main function to find a building at a location, extract its OBJ, and visualize it.
     """
@@ -228,37 +204,64 @@ def main(parquet_file, x, y, proximity_threshold=10.0, show_stats=True, stl_out=
         get_buildings_stats(parquet_file)
     
     # Find the building
-    building = find_building_at_location(parquet_file, x, y, proximity_threshold)
+    building_2d = find_building_at_location(parquet_file, x, y, proximity_threshold)
     
-    if building is None:
+    if building_2d is None:
         print(f"No building found near coordinates ({x}, {y})")
         return
     
-    print(f"\nBuilding details:")
-    print(f"ID: {building.get('id', 'N/A')}")
-    print(f"Type: {building.get('OBJEKTART', 'N/A')}")
+    print("\nBuilding details:")
+    print(f"ID: {building_2d.get('id', 'N/A')}")
+    print(f"Type: {building_2d.get('OBJEKTART', 'N/A')}")
     
-    bbox = building.get('bbox')
+    bbox = building_2d.get('bbox')
     if bbox and hasattr(bbox, 'get'):
         print(f"Bounding Box: X({bbox.get('xmin', 'N/A'):.2f}, {bbox.get('xmax', 'N/A'):.2f}), "
               f"Y({bbox.get('ymin', 'N/A'):.2f}, {bbox.get('ymax', 'N/A'):.2f})")
     
+    # Find nearby buildings
+    parquet_file = parquet_file.replace("_2d","_obj")
+    building_obj = find_all_nearby_buildings(parquet_file, x, y, proximity_threshold)
+
+    if with_roofs:
+        parquet_file = parquet_file.replace("Building","Roof")
+        building_roofs = find_all_nearby_buildings(parquet_file, x, y, proximity_threshold)
+    else:
+        building_roofs = []
+        
+    meshes = pv.PolyData()
     # Extract the OBJ data
-    obj_data = extract_obj_from_blob(building.get('obj'))
+    for item in building_obj + building_roofs:
+        obj_data = extract_obj_from_blob(item)
     
-    if obj_data is None:
-        print("Failed to extract OBJ data")
-        return
-    
-    # Count vertices and faces for a quick check
-    v_count = obj_data.count("\nv ")
-    f_count = obj_data.count("\nf ")
-    print(f"OBJ file contains approximately {v_count} vertices and {f_count} faces")
-    
+        if obj_data is None:
+            print("Failed to extract OBJ data")
+            return
+
+        
+        # Count vertices and faces for a quick check
+        v_count = obj_data.count("\nv ")
+        f_count = obj_data.count("\nf ")
+        print(f"OBJ file contains approximately {v_count} vertices and {f_count} faces")
+        
+        # Wrap string in a file-like object
+        with tempfile.NamedTemporaryFile(suffix=".obj", delete=False) as tmp:
+            tmp.write(obj_data.encode("utf-8"))
+            meshes += pv.read(tmp.name)
+
     # Optionally export STL, then visualize
     if stl_out:
-        save_stl_from_obj_text(obj_data, stl_out)
-    visualize_obj_with_pyvista(obj_data)
+        meshes.save(stl_out)
+            
+    # Set up the plotter
+    plotter = pv.Plotter()
+    plotter.add_mesh(meshes, color='lightgray', show_edges=True)
+    plotter.show_axes()
+
+    # Show the plot
+    plotter.show()
+
+    
 
 if __name__ == "__main__":
     import argparse
@@ -269,8 +272,9 @@ if __name__ == "__main__":
     parser.add_argument('y', type=float, help='Y coordinate')
     parser.add_argument('--threshold', type=float, default=10.0, help='Maximum distance to search for buildings')
     parser.add_argument('--no-stats', action='store_true', help='Skip showing dataset statistics')
+    parser.add_argument('--with-roofs', action='store_true', help='Also show roofs')
     parser.add_argument('--stl-out', default=None, help='Optional path to save an STL export of the building mesh')
     
     args = parser.parse_args()
     
-    main(args.parquet_file, args.x, args.y, args.threshold, not args.no_stats, args.stl_out)
+    main(args.parquet_file, args.x, args.y, args.threshold, not args.no_stats, args.stl_out, args.with_roofs)
