@@ -8,11 +8,29 @@
 - `qgis/`: Project files and helpers for manual bridge inspection; `Attic/` holds experiments kept for reference.
 
 ## Build, Test, and Development Commands
-- `source init.sh`: Activates the conda environment expected by the Makefile before running data jobs.
+- Python env: prefer `uv` for all Python tasks — conda is no longer required. Use `uv run python ...` to execute scripts.
 - `make download | create_addresses | create_buildings | create_bridges`: Stage the ETL pipeline; run sequentially when refreshing datasets.
 - `make pmtiles`: Rebuilds the PMTiles used by the web map after geometry changes.
 - `cd web && npm install`: Install UI dependencies; `npm run dev` starts the local map, `npm run build` prepares `web/dist` for deploy, `npm run preview` smoke-tests the build.
 - `make devserver`: Convenience target that launches the frontend with the correct environment.
+
+## ETL via Makefile
+- Single entrypoint: the entire ETL and its dependencies are encoded in the Makefile. Use the targets below; no conda required.
+- Runtime: the Makefile uses `uv` (`PYTHON_CMD = uv run python`) to execute scripts and manage Python dependencies.
+- Parquet I/O: scripts use `pyogrio` to write GeoParquet with `GEOMETRY_ENCODING=WKB` and `PARQUET_COMPRESSION=SNAPPY`.
+- Chunking + parallelism: scripts process data in chunks and parallelize where beneficial; worker counts are configurable via CLI flags.
+
+- Key targets:
+  - `make download` — fetch raw datasets.
+  - `make create_buildings` — produce building Parquet chunks and 2D outputs; runs schema metadata generation.
+  - `make create_addresses` — generate address Parquet extracts.
+  - `make create_bridges` — create parametrized 3D bridges and related outputs.
+  - `make pmtiles` — build `web/public/buildings.pmtiles` from processed outputs.
+  - `make publish_*` — rsync artifacts to the hosting server.
+  - `make dependency` — render the ETL dependency graph at `assets/dependency_processing.png`.
+
+- macOS/Homebrew tip:
+  - `make align_with_homebrew` aligns pyogrio/pyarrow with brewed GDAL/Arrow.
 
 ## Coding Style & Naming Conventions
 - Python adheres to PEP 8 with 4-space indents; use descriptive snake_case for functions/modules and keep heavy processing in `scripts/`.
