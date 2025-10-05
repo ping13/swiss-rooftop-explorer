@@ -135,12 +135,12 @@ pmtiles:  web/public/buildings.pmtiles 	## calculate building pmtiles for the we
 	time $(PYTHON_CMD) scripts/swissbuildings3D_process.py $(patsubst %/chunk_00.parquet,%,$<)
 
 assets/missing_buildings_test.done: assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet scripts/create_addl_buildings_from_roof.py
-	time $(PYTHON_CMD) scripts/create_addl_buildings_from_roof.py --overwrite --buildings-file $(dir $(word 1,$^)) --roofs-file $(dir $(word 2,$^))  --output-file $(addsuffix .parquet,$(basename $@))
+	time $(PYTHON_CMD) scripts/create_addl_buildings_from_roof.py --overwrite --buildings-file $(call dir_noslash,$(word 1,$^)) --roofs-file $(call dir_noslash,$(word 2,$^))  --output-file $(addsuffix .parquet,$(basename $@))
 	touch $@ # this parque is an empty parquet file
 
 assets/missing_buildings.done: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet scripts/create_addl_buildings_from_roof.py
 	@echo "create missing buildings (like Letzigrund etc) from roofs. There are 2.5 mio buildings, but 3.2 mio roofs."
-	time $(PYTHON_CMD) scripts/create_addl_buildings_from_roof.py --overwrite --buildings-file $(dir $(word 1,$^)) --roofs-file $(dir $(word 2,$^))  --output-file $(addsuffix .parquet,$(basename $@))
+	time $(PYTHON_CMD) scripts/create_addl_buildings_from_roof.py --overwrite --buildings-file $(call dir_noslash,$(word 1,$^)) --roofs-file $(call dir_noslash, $(word 2,$^))  --output-file $(addsuffix .parquet,$(basename $@))
 	touch $@ # this parque is an empty parquet file
 
 assets/building_center_points.parquet: assets/swissBUILDINGS3D_3_0_Building_solid_2d scripts/create_center_points.py
