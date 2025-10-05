@@ -80,11 +80,11 @@ def main(buildings_file, roofs_file, output_file, out_2d, out_obj, overwrite, co
             f"{out_obj if os.path.exists(out_obj) else ''}"
         )
 
-    print("read buildings")
-    buildings = gpd.read_file(buildings_file)
+    print(f"read buildings {buildings_file}")
+    buildings = gpd.read_parquet(buildings_file)
 
-    print("read roofs")
-    roofs = gpd.read_file(roofs_file)
+    print(f"read roofs {roofs_file}")
+    roofs = gpd.read_parquet(roofs_file)
     roofs_copy = roofs.copy()
 
     print(f"found {len(buildings)} buildings and {len(roofs_copy)} roofs")
@@ -143,11 +143,6 @@ def main(buildings_file, roofs_file, output_file, out_2d, out_obj, overwrite, co
     # Prepare outputs
     print(f"write outputs: 2D -> {out_2d}, OBJ -> {out_obj}")
 
-    # 1) Write 2D file (drop obj)
-    out_2d_gdf = selected.drop(columns=['obj'], errors='ignore')
-    # write via GDAL/pyogrio to avoid pyarrow filesystem issues
-    pyogrio.write_dataframe(out_2d_gdf, out_2d, driver='Parquet')
-
     # 2) Write OBJ sidecar with bbox struct via PyArrow
     if len(selected) == 0:
         id_arr = pa.array([], type=pa.int64())
@@ -162,6 +157,12 @@ def main(buildings_file, roofs_file, output_file, out_2d, out_obj, overwrite, co
         obj_arr = pa.array(selected['obj'].tolist(), type=pa.binary())
         bbox_arr = build_bbox_struct_from_gdf(selected)
 
+    # 1) Write 2D file (drop obj)
+    out_2d_gdf = selected.drop(columns=['obj'], errors='ignore')
+    # write via GDAL/pyogrio to avoid pyarrow filesystem issues
+    pyogrio.write_dataframe(out_2d_gdf, out_2d, driver='Parquet')
+
+        
     table = pa.Table.from_arrays([id_arr, obj_arr, bbox_arr], names=['id', 'obj', 'bbox'])
 
     # Write to in-memory buffer first to avoid filesystem registration issues
