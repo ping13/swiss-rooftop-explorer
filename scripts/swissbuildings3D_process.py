@@ -49,9 +49,7 @@ def multipolygon_to_obj(geometry):
         print(f"*** Warning (to_obj): '{e}', return empty string")
         return zlib.compress("".encode('utf-8'))
 
-    obj = zlib.compress("\n".join(obj_lines).encode('utf-8'))
-    assert isinstance(obj, bytes), "compressed OBJ is not bytes"
-    return obj
+    return zlib.compress("\n".join(obj_lines).encode('utf-8'))
 
 
 def mesh_to_obj_text(mesh) -> str:
@@ -136,6 +134,40 @@ def multipolygon_to_watertight_obj(geometry):
 
 
 
+def validate_obj_binary_column(gdf, column: str = 'obj'):
+    if column not in gdf.columns:
+        return
+    s = gdf[column]
+    # All values must be bytes or None; NaN (float) or str indicates a problem
+    ok = s.map(lambda x: (x is None) or isinstance(x, (bytes,))).all()
+    if ok:
+        return
+    # If not ok, report offending types for diagnosis
+    type_counts = s.map(lambda x: type(x).__name__).value_counts(dropna=False)
+    raise AssertionError(
+        f"Column '{column}' must contain only bytes or None before writing. Found types: {dict(type_counts)}"
+    )
+
+
+def normalize_obj_binary_column(gdf, column: str = 'obj'):
+    if column not in gdf.columns:
+        return gdf
+    def _norm(x):
+        if x is None:
+            return b""
+        if isinstance(x, bytes):
+            return x
+        if isinstance(x, bytearray):
+            return bytes(x)
+        if isinstance(x, memoryview):
+            return bytes(x)
+        # Do not auto-convert str; that would change semantics (expect compressed bytes)
+        return x
+    gdf = gdf.copy()
+    gdf[column] = gdf[column].map(_norm)
+    return gdf
+
+
 def process_chunk(gdf, build_watertight: bool, n_workers: int, next_id: int, skip_3d: bool):
     # Assign IDs and drop UUID
     gdf = gdf.copy()
@@ -145,18 +177,13 @@ def process_chunk(gdf, build_watertight: bool, n_workers: int, next_id: int, ski
 
     # Optionally create 3D OBJ column
     if not skip_3d:
-        if build_watertight:
-            print(f"Create watertight 3d models")
-            builder = multipolygon_to_watertight_obj 
-        else: 
-            print(f"Create simple 3d models")
-            builder = multipolygon_to_obj
-
-        # 
-        gdf['obj'] = gdf.geometry.progress_apply(
-            lambda geom: builder(geom),
-        ).astype('O')
-        assert gdf["obj"].map(lambda x: isinstance(x, (bytes, type(None)))).all()
+        print(f"Create 3d models ({'watertight' if build_watertight else 'raw'}) for {len(gdf)} rows")
+        builder = multipolygon_to_watertight_obj if build_watertight else multipolygon_to_obj
+        from concurrent.futures import ProcessPoolExecutor
+        geoms = list(gdf.geometry.values)
+        with ProcessPoolExecutor(max_workers=max(1, int(n_workers))) as ex:
+            objs = list(tqdm(ex.map(builder, geoms, chunksize=32), total=len(geoms), desc="Building OBJ (parallel)"))
+        gdf['obj'] = np.array(objs, dtype=object)
     else:
         print("Skipping 3D model creation (--skip-3d)")
 
@@ -167,7 +194,7 @@ def process_chunk(gdf, build_watertight: bool, n_workers: int, next_id: int, ski
         except shapely.errors.GEOSException as e:
             print(f"Skip geometry: {e}")
             return x
-        
+
     gdf.geometry = gdf.geometry.apply(simplify_multipolygon)
     gdf['boundary_2d'] = gdf.geometry.progress_apply(
         lambda geom: shapely.ops.transform(lambda x, y, z=None: (x, y), geom.boundary)
@@ -217,9 +244,11 @@ if __name__ == "__main__":
     else:
         files = [src_path]
 
-    # Output folder
+    # Output folders
     out_folder = args.out or f"{src_path}_2d/"
+    obj_folder = f"{src_path}_obj/"
     os.makedirs(out_folder, exist_ok=True)
+    os.makedirs(obj_folder, exist_ok=True)
 
     next_id = 1
     total_rows = 0
@@ -260,11 +289,56 @@ if __name__ == "__main__":
         if not base.lower().endswith('.parquet'):
             base = f"chunk_{i:02d}.parquet"
         out_path = os.path.join(out_folder, base)
+        obj_path = os.path.join(obj_folder, base)
 
-        print(f"Export to parquet: {out_path}")
-        # Write via GDAL/pyogrio Parquet driver with WKB + Snappy
+        # Prepare sidecar first (if obj exists)
+        has_obj = 'obj' in out_gdf.columns and not args.skip_3d
+        if has_obj:
+            # Normalize and validate 'obj' to avoid VARCHAR inference
+            out_gdf = normalize_obj_binary_column(out_gdf, 'obj')
+            validate_obj_binary_column(out_gdf, 'obj')
+
+            # Compute bbox from current geometry (boundary_2d)
+            b = out_gdf.geometry.bounds
+            b = b[['minx','miny','maxx','maxy']].astype('float64')
+
+            # Build sidecar table with explicit types (id:int64, obj:binary, bbox:struct{xmin,ymin,xmax,ymax})
+            ids = out_gdf['id'].astype('int64').tolist()
+            objs = out_gdf['obj'].tolist()
+            obj_arr = pa.array(objs, type=pa.binary())
+            id_arr = pa.array(ids, type=pa.int64())
+            xmin_arr = pa.array(b['minx'].to_numpy(), type=pa.float64())
+            ymin_arr = pa.array(b['miny'].to_numpy(), type=pa.float64())
+            xmax_arr = pa.array(b['maxx'].to_numpy(), type=pa.float64())
+            maxy_arr = pa.array(b['maxy'].to_numpy(), type=pa.float64())
+            bbox_struct = pa.StructArray.from_arrays(
+                [xmin_arr, ymin_arr, xmax_arr, maxy_arr],
+                fields=[
+                    pa.field('xmin', pa.float64()),
+                    pa.field('ymin', pa.float64()),
+                    pa.field('xmax', pa.float64()),
+                    pa.field('ymax', pa.float64()),
+                ]
+            )
+            sidecar = pa.table({'id': id_arr, 'obj': obj_arr, 'bbox': bbox_struct})
+
+            # Write sidecar via in-memory buffer to avoid uv/pyarrow filesystem issue
+            sink = pa.BufferOutputStream()
+            pq.write_table(sidecar, sink)
+            data = sink.getvalue().to_pybytes()
+            with open(obj_path, 'wb') as f:
+                f.write(data)
+            print(f"Export sidecar: {obj_path}")
+
+        # Write main dataset (without obj)
+        if has_obj and 'obj' in out_gdf.columns:
+            main_gdf = out_gdf.drop(columns=['obj'])
+        else:
+            main_gdf = out_gdf
+
+        print(f"Export 2d: {out_path}")
         pyogrio.write_dataframe(
-            out_gdf,
+            main_gdf,
             out_path,
             driver="Parquet",
             dataset_options={
