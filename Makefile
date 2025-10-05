@@ -48,6 +48,8 @@ align_with_homebrew:   ## for homebrew on Mac, we want to align pyogrio and pyar
 
 ### ETL
 
+dir_noslash = $(patsubst %/,%,$(dir $(1)))
+
 dependency: assets/dependency_processing.png ## Show the dependency graph of this Makefile
 
 assets/dependency_processing.png: Makefile 	
@@ -55,12 +57,13 @@ assets/dependency_processing.png: Makefile
 
 download:	assets/data.sqlite assets/swissBUILDINGS3D_3_0.gdb/gdb assets/swissBUILDINGS3D_3-0_1112-13.gdb/gdb assets/data.sqlite $(SWISSTLM3D_FILENAME) ## download and unzip buildings, address data and TLM data (may take a while, large data)
 
-publish_buildings:	assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet  assets/missing_buildings.done assets/building_center_points.parquet ## publish parquet files to the data dir
-	rsync -a --info=skip1,name0 --checksum  $(dir $(word 1, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
-	rsync -a --info=skip1,name0 --checksum  $(dir $(word 2, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
-	rsync -a --info=skip1,name0 --checksum  $(dir $(word 3, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
-	rsync -a --info=skip1,name0 --checksum  $(dir $(word 4, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
-	rsync -a --info=skip1,name0 --checksum  $(word 5, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
+publish_buildings:	 assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Building_solid_obj/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3_0_Roof_solid_obj/chunk_00.parquet  assets/missing_buildings.done assets/building_center_points.parquet ## publish parquet files to the data dir
+	rsync -a --info=skip1,name0 --checksum  $(call dir_noslash, $(word 1, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -a --info=skip1,name0 --checksum  $(call dir_noslash, $(word 2, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -a --info=skip1,name0 --checksum  $(call dir_noslash, $(word 3, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -a --info=skip1,name0 --checksum  $(call dir_noslash, $(word 4, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -a --info=skip1,name0 --checksum  $(patsubst %.done,%_2d.parquet,$(word 5, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
+	rsync -a --info=skip1,name0 --checksum  $(patsubst %.done,%_obj.parquet,$(word 5, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -a --info=skip1,name0 --checksum  $(word 6, $^) ping13@s022.cyon.net:~/public_html/ping13.net/data
 
 publish_bridges: assets/railway_bridges.parquet assets/road_bridges.parquet assets/bridges_with_parameters.geojson ## publish parquet files for bridges
@@ -151,7 +154,7 @@ web/public/buildings.pmtiles: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chun
 ### ETL Road and Railway Bridges - TLM
 
 assets/bridge_parameters.db: scripts/create_bridge_db.sh
-	@echo "Initializes the bridge parameters DB if it doesn't exist yet"
+	@echo "Initializes the bridge parameters DB if it doesn't exist yet"<
 	bash scripts/create_bridge_db.sh $@
 
 create_bridges: assets/road_bridges.parquet assets/railway_bridges.parquet ## create parametrized 3D bridges
