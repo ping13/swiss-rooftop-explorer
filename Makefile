@@ -55,7 +55,7 @@ assets/dependency_processing.png: Makefile
 
 download:	assets/data.sqlite assets/swissBUILDINGS3D_3_0.gdb/gdb assets/swissBUILDINGS3D_3-0_1112-13.gdb/gdb assets/data.sqlite $(SWISSTLM3D_FILENAME) ## download and unzip buildings, address data and TLM data (may take a while, large data)
 
-publish_buildings:	assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet  assets/missing_buildings_2d.parquet assets/building_center_points.parquet ## publish parquet files to the data dir
+publish_buildings:	assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet  assets/missing_buildings.done assets/building_center_points.parquet ## publish parquet files to the data dir
 	rsync -a --info=skip1,name0 --checksum  $(dir $(word 1, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -a --info=skip1,name0 --checksum  $(dir $(word 2, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
 	rsync -a --info=skip1,name0 --checksum  $(dir $(word 3, $^)) ping13@s022.cyon.net:~/public_html/ping13.net/data
@@ -113,7 +113,7 @@ web/public/addresses.parquet: scripts/addresses_sqlite2pq.py assets/data.sqlite
 ### ETL Buildings
 
 
-create_buildings: $(PARQUET_FILES) $(PARQUET_FILES_2D) assets/missing_buildings_test_2d.parquet assets/missing_buildings_2d.parquet ## create building parquet files
+create_buildings: $(PARQUET_FILES) $(PARQUET_FILES_2D) assets/missing_buildings_test.done assets/missing_buildings.done ## create building parquet files
 
 pmtiles:  web/public/buildings.pmtiles 	## calculate building pmtiles for the web
 
@@ -131,14 +131,16 @@ pmtiles:  web/public/buildings.pmtiles 	## calculate building pmtiles for the we
 	@echo "Creating $@"
 	time $(PYTHON_CMD) scripts/swissbuildings3D_process.py $(patsubst %/chunk_00.parquet,%,$<)
 
-assets/missing_buildings_test_2d.parquet: assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet scripts/create_addl_buildings_from_roof.py
-	time $(PYTHON_CMD) scripts/create_addl_buildings_from_roof.py --overwrite --buildings-file $(dir $(word 1,$^)) --roofs-file $(dir $(word 2,$^))  --output-file $@
+assets/missing_buildings_test.done: assets/swissBUILDINGS3D_3-0_1112-13_Building_solid_2d/chunk_00.parquet assets/swissBUILDINGS3D_3-0_1112-13_Roof_solid_2d/chunk_00.parquet scripts/create_addl_buildings_from_roof.py
+	time $(PYTHON_CMD) scripts/create_addl_buildings_from_roof.py --overwrite --buildings-file $(dir $(word 1,$^)) --roofs-file $(dir $(word 2,$^))  --output-file $(addsuffix .parquet,$(basename $@))
+	touch $@ # this parque is an empty parquet file
 
-assets/missing_buildings_2d.parquet: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet scripts/create_addl_buildings_from_roof.py
+assets/missing_buildings.done: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet  assets/swissBUILDINGS3D_3_0_Roof_solid_2d/chunk_00.parquet scripts/create_addl_buildings_from_roof.py
 	@echo "create missing buildings (like Letzigrund etc) from roofs. There are 2.5 mio buildings, but 3.2 mio roofs."
-	time $(PYTHON_CMD) scripts/create_addl_buildings_from_roof.py --overwrite --buildings-file $(dir $(word 1,$^)) --roofs-file $(dir $(word 2,$^))  --output-file $@
+	time $(PYTHON_CMD) scripts/create_addl_buildings_from_roof.py --overwrite --buildings-file $(dir $(word 1,$^)) --roofs-file $(dir $(word 2,$^))  --output-file $(addsuffix .parquet,$(basename $@))
+	touch $@ # this parque is an empty parquet file
 
-assets/building_center_points.parquet: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet scripts/create_center_points.py
+assets/building_center_points.parquet: assets/swissBUILDINGS3D_3_0_Building_solid_2d scripts/create_center_points.py
 	time $(PYTHON_CMD) scripts/create_center_points.py $< $@
 
 web/public/buildings.pmtiles: assets/swissBUILDINGS3D_3_0_Building_solid_2d/chunk_00.parquet assets/railway_bridges.parquet assets/road_bridges.parquet assets/missing_buildings.parquet scripts/pq2pmtiles.sh

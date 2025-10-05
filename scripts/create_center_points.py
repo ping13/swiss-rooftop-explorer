@@ -31,9 +31,9 @@ def main():
     CREATE TABLE building_centers AS
     WITH lengths AS (
       SELECT
-        ST_Length(boundary_2d) AS length,
-        ((bbox['xmin'] + bbox['xmax']) / 2)::INTEGER AS x,
-        ((bbox['ymin'] + bbox['ymax']) / 2)::INTEGER AS y
+        ST_Length(geometry) AS length,
+        ((geometry_bbox['xmin'] + geometry_bbox['xmax']) / 2)::INTEGER AS x,
+        ((geometry_bbox['ymin'] + geometry_bbox['ymax']) / 2)::INTEGER AS y
         FROM buildings
     ),
     median_val AS (
