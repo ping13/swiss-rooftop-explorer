@@ -33,16 +33,15 @@ def find_building_at_location(parquet_file, x, y, proximity_threshold=10.0):
     # Query to find the closest building
     query = f"""
     SELECT *, 
-           ST_Distance(boundary_2d, ST_GeomFromText('{point_wkt}')) AS distance
-    FROM '{parquet_file}'
-    WHERE boundary_2d IS NOT NULL
+           ST_Distance(geometry, ST_GeomFromText('{point_wkt}')) AS distance
+    FROM read_parquet('{parquet_file}')
+    WHERE geometry IS NOT NULL
     ORDER BY distance
     LIMIT 1;
     """
     
     try:
         result = con.execute(query).fetchone()
-        
         if result is None:
             print("No buildings found with valid boundary geometry.")
             return None
@@ -52,14 +51,14 @@ def find_building_at_location(parquet_file, x, y, proximity_threshold=10.0):
         if distance <= proximity_threshold:
             print(f"Found building at distance {distance:.2f} units")
             # Convert to dict for consistency with the rest of the code
-            column_names = con.execute(f"SELECT * FROM '{parquet_file}' LIMIT 0").description
+            column_names = con.execute(f"SELECT * FROM read_parquet('{parquet_file}') LIMIT 0").description
             column_names = [col[0] for col in column_names] + ['distance']
             building_dict = dict(zip(column_names, result))
             return building_dict
         else:
             print(f"Closest building is at distance {distance:.2f} units, which exceeds threshold of {proximity_threshold}")
             if distance < float('inf'):
-                column_names = con.execute(f"SELECT * FROM '{parquet_file}' LIMIT 0").description
+                column_names = con.execute(f"SELECT * FROM read_parquet('{parquet_file}') LIMIT 0").description
                 column_names = [col[0] for col in column_names] + ['distance']
                 building_dict = dict(zip(column_names, result))
                 return building_dict
@@ -69,14 +68,14 @@ def find_building_at_location(parquet_file, x, y, proximity_threshold=10.0):
         try:
             print("Trying alternative query method...")
             # Get total count
-            count = con.execute(f"SELECT COUNT(*) FROM '{parquet_file}'").fetchone()[0]
+            count = con.execute(f"SELECT COUNT(*) FROM read_parquet('{parquet_file}')").fetchone()[0]
             print(f"Found {count} buildings in the parquet file.")
             
             # Get the first building with non-null obj column
-            result = con.execute(f"SELECT * FROM '{parquet_file}' WHERE obj IS NOT NULL LIMIT 1").fetchone()
+            result = con.execute(f"SELECT * FROM read_parquet('{parquet_file}') WHERE obj IS NOT NULL LIMIT 1").fetchone()
             if result:
                 print("Selected a random building for visualization")
-                column_names = con.execute(f"SELECT * FROM '{parquet_file}' LIMIT 0").description
+                column_names = con.execute(f"SELECT * FROM read_parquet('{parquet_file}') LIMIT 0").description
                 column_names = [col[0] for col in column_names]
                 building_dict = dict(zip(column_names, result))
                 return building_dict
@@ -94,7 +93,6 @@ def extract_obj_from_blob(obj_blob):
     if obj_blob is None:
         print("Error: Object blob is None")
         return None
-    
     decompression_methods = [
         # Standard gzip decompression
         lambda b: gzip.decompress(b),
@@ -120,7 +118,7 @@ def extract_obj_from_blob(obj_blob):
         except Exception:
             continue
     
-    print("Failed to extract valid OBJ data after trying multiple decompression methods")
+    print(f"Failed to extract valid OBJ data after trying multiple decompression methods for {type(obj_blob)}: {obj_blob}")
     return None
 
 def save_stl_from_obj_text(obj_data, stl_path):
@@ -182,14 +180,14 @@ def get_buildings_stats(parquet_file):
     
     try:
         # Total number of buildings
-        total = con.execute(f"SELECT COUNT(*) FROM '{parquet_file}'").fetchone()[0]
+        total = con.execute(f"SELECT COUNT(*) FROM read_parquet('{parquet_file}')").fetchone()[0]
         print(f"Total number of buildings: {total}")
         
         # Buildings by type
         try:
             type_stats = con.execute(f"""
                 SELECT OBJEKTART, COUNT(*) as count 
-                FROM '{parquet_file}' 
+                FROM read_parquet('{parquet_file}')
                 GROUP BY OBJEKTART 
                 ORDER BY count DESC
             """).fetchall()
